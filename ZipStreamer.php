@@ -78,6 +78,7 @@ class ZipStreamer {
         header('Content-Disposition: attachment; filename="' . $archiveName . '";');
         header('Content-Transfer-Encoding: binary');
         flush();
+        ob_end_flush();
       }
     }
   }
