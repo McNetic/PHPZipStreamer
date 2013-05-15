@@ -27,11 +27,14 @@
  */
 
 class GPFLAGS {
-  /* ADD flag (sizes and crc32 are append in data descriptor */
-  const ADD =           0x0008;
-  /* EFS flag (UTF-8 encoded filename and/or comment */
-  const EFS =           0x0800;
+  const ADD =           0x0008;  // ADD flag (sizes and crc32 are append in data descriptor
+  const EFS =           0x0800;  // EFS flag (UTF-8 encoded filename and/or comment
 };
+
+class GZMETHOD {
+  const STORE =         0x0000;  //  0 - The file is stored (no compression)
+  const DEFLATE =       0x0008;  //  8 - The file is Deflated
+}
 
 class ZipStreamer {
   const VERSION = 0.1;
@@ -46,7 +49,6 @@ class ZipStreamer {
   const ATTR_VERSION_TO_EXTRACT = "\x14\x00"; // Version needed to extract
   const ATTR_MADE_BY_VERSION = "\x1E\x03"; // Made By Version
 
-  #const STREAM_CHUNK_SIZE = 16384; // 65536;
   const STREAM_CHUNK_SIZE = 1048576; // 1mb chunks
 
   private $cdRec = array(); // central directory
@@ -113,20 +115,24 @@ class ZipStreamer {
     $filePath = self::normalizeFilePath($filePath);
 
     $gpFlags = GPFLAGS::ADD;
-    $gzType = 0x0000; // Compression type 0 = stored
+    if ($compress) {
+      $gzMethod = GZMETHOD::DEFLATE;
+    } else {
+      $gzMethod = GZMETHOD::STORE;
+    }
 
     OC_Log::write('ZipStreamer', 'beginFile', OC_Log::DEBUG);
-    list ($gpFlags, $lfhLength) = $this->beginFile($filePath, $fileComment, $timestamp, $gpFlags, $gzType);
+    list ($gpFlags, $lfhLength) = $this->beginFile($filePath, $fileComment, $timestamp, $gpFlags, $gzMethod);
 
     OC_Log::write('ZipStreamer', 'streamFileData', OC_Log::DEBUG);
-    list ($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream);
+    list ($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
 
     #OC_Log::write('ZipStreamer', 'addDataDescriptor', OC_Log::DEBUG);
     #$this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
 
     // build cdRec
     OC_Log::write('ZipStreamer', 'buildCentralDirectoryHeader', OC_Log::DEBUG);
-    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzType, $dataLength, $gzLength, $dataCRC32, self::EXT_FILE_ATTR_FILE, $this->offset);
+    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength, $gzLength, $dataCRC32, self::EXT_FILE_ATTR_FILE, $this->offset);
 
     // calc offset
     $this->offset += $lfhLength + $gzLength;
@@ -151,14 +157,14 @@ class ZipStreamer {
 
     if (strlen($directoryPath) > 0) {
       $gpFlags = 0x0000; // Compression type 0 = stored
-      $gzType = 0x0000; // Compression type 0 = stored
+      $gzMethod = GZMETHOD::STORE; // Compression type 0 = stored
 
       OC_Log::write('ZipStreamer', 'beginFile', OC_Log::DEBUG);
-      list ($gpFlags, $lfhLength) = $this->beginFile($directoryPath, $fileComment, $timestamp, $gpFlags, $gzType);
+      list ($gpFlags, $lfhLength) = $this->beginFile($directoryPath, $fileComment, $timestamp, $gpFlags, $gzMethod);
 
       // build cdRec
       OC_Log::write('ZipStreamer', 'buildCentralDirectoryHeader', OC_Log::DEBUG);
-      $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzType, 0, 0, 0, self::EXT_FILE_ATTR_DIR, $this->offset);
+      $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod, 0, 0, 0, self::EXT_FILE_ATTR_DIR, $this->offset);
 
       return true;
     }
@@ -166,7 +172,7 @@ class ZipStreamer {
   }
 
   private function beginFile($filePath, $fileComment, $timestamp,
-                  $gpFlags = 0x0000, $gzType = 0x0000, $dataLength = 0,
+                  $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE, $dataLength = 0,
                   $gzLength = 0, $dataCRC32 = 0) {
     $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
     $isCommentUTF8 = !empty($fileComment) && mb_check_encoding($fileComment, 'UTF-8') && !mb_check_encoding($fileComment, 'ASCII');
@@ -174,7 +180,7 @@ class ZipStreamer {
       $gpFlags |= GPFLAGS::EFS;
     }
     OC_Log::write('ZipStreamer', 'buildLocalFileHeader', OC_Log::DEBUG);
-    $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzType, $dataLength, $gzLength, $dataCRC32);
+    $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength, $gzLength, $dataCRC32);
     echo $localFileHeader;
 
     return array ($gpFlags, strlen($localFileHeader));
@@ -208,23 +214,30 @@ class ZipStreamer {
     return false;
   }
 
-  private function streamFileData($stream) {
+  private function streamFileData($stream, $compress) {
     $dataLength = 0;
+    $gzLength = 0;
     $hashCtx = hash_init('crc32b');
 
     while (!feof($stream)) {
       $data = fread($stream, self::STREAM_CHUNK_SIZE);
       $dataLength += strlen($data);
       hash_update($hashCtx, $data);
+      if ($compress) {
+        //TODO: this is broken.
+        $data = gzdeflate($data);
+      }
+      $gzLength += strlen($data);
       echo $data;
-      OC_Log::write('ZipStreamer', 'streamed '.strlen($data).' bytes of data', OC_Log::DEBUG);
+
+      OC_Log::write('ZipStreamer', 'streamed '.$dataLength.' bytes of data', OC_Log::DEBUG);
       flush();
     }
-    return array ($dataLength, $dataLength, unpack('N', hash_final($hashCtx, true))[1]);
+    return array ($dataLength, $gzLength, unpack('N', hash_final($hashCtx, true))[1]);
   }
 
   private function buildLocalFileHeader($filePath, $timestamp,
-                  $gpFlags = 0x0000, $gzType = 0x0000, $dataLength = 0,
+                  $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE, $dataLength = 0,
                   $gzLength = 0, $dataCRC32 = 0) {
     $dosTime = self::getDosTime($timestamp);
 
@@ -232,7 +245,7 @@ class ZipStreamer {
       . self::ZIP_LOCAL_FILE_HEADER   // local file header signature     4 bytes  (0x04034b50)
       . self::ATTR_VERSION_TO_EXTRACT //version needed to extract       2 bytes
       . pack('v', $gpFlags)           //general purpose bit flag        2 bytes
-      . pack('v', $gzType)            //compression method              2 bytes
+      . pack('v', $gzMethod)            //compression method              2 bytes
       . $dosTime                      //last mod file time              2 bytes
                                       //last mod file date              2 bytes
       . pack('V', $dataCRC32)         //crc-32                          4 bytes
@@ -247,7 +260,7 @@ class ZipStreamer {
   }
 
   private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
-                  $gzType, $dataLength, $gzLength, $dataCRC32, $extFileAttr,
+                  $gzMethod, $dataLength, $gzLength, $dataCRC32, $extFileAttr,
                   $offset) {
     $dosTime = self::getDosTime($timestamp);
 
@@ -256,7 +269,7 @@ class ZipStreamer {
       . self::ATTR_MADE_BY_VERSION      //version made by                 2 bytes
       . self::ATTR_VERSION_TO_EXTRACT   //version needed to extract       2 bytes
       . pack('v', $gpFlags)             //general purpose bit flag        2 bytes
-      . pack('v', $gzType)              //compression method              2 bytes
+      . pack('v', $gzMethod)              //compression method              2 bytes
       . $dosTime                        //last mod file time              2 bytes
                                         //last mod file date              2 bytes
       . pack('V', $dataCRC32)           //crc-32                          4 bytes
