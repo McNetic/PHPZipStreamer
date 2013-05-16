@@ -23,7 +23,7 @@
  * @author Nicolai Ehemann (en@enlightened.de)
  * @copyright 2013 Nicolai Ehemann
  * @license GNU GPL
- * @version 0.1
+ * @version 0.2
  */
 
 class GPFLAGS {
@@ -37,7 +37,7 @@ class GZMETHOD {
 }
 
 class ZipStreamer {
-  const VERSION = 0.1;
+  const VERSION = 0.2;
 
   const ZIP_LOCAL_FILE_HEADER = "\x50\x4b\x03\x04"; // Local file header signature
   const ZIP_CENTRAL_FILE_HEADER = "\x50\x4b\x01\x02"; // Central file header signature
@@ -46,43 +46,55 @@ class ZipStreamer {
   const EXT_FILE_ATTR_DIR = "\x10\x00\xFF\x41";
   const EXT_FILE_ATTR_FILE = "\x00\x00\xFF\x81";
 
+  //TODO: make this dynamic, depending on flags/compression methods
   const ATTR_VERSION_TO_EXTRACT = "\x14\x00"; // Version needed to extract
   const ATTR_MADE_BY_VERSION = "\x1E\x03"; // Made By Version
 
   const STREAM_CHUNK_SIZE = 1048576; // 1mb chunks
 
   private $cdRec = array(); // central directory
-  private $offset = 0;
+  private $offset = 0; // offset of next file to be added
   private $isFinalized = false;
 
   /**
    * Constructor.
    *
-   * @param String $archiveName Name to send to the HTTP client.
-   * @param String $contentType Content mime type. Optional, defaults to "application/zip".
+   * @param bool   $sendHeaders Send suitable headers to the HTTP client (assumes nothing was sent yet)
+   * @param string $archiveName Name to send to the HTTP client. Optional, defaults to "archive.zip".
+   * @param string $contentType Content mime type. Optional, defaults to "application/zip".
    */
-  function __construct($archiveName = '', $contentType = 'application/zip') {
-    $headerFile = null;
-    $headerLine = null;
-    if (!headers_sent($headerFile, $headerLine) or die('<p><strong>Error:</strong> Unable to send file $archiveName. HTML Headers have already been sent from <strong>$headerFile</strong> in line <strong>$headerLine</strong></p>')) {
-      if ((ob_get_contents() === false || ob_get_contents() == '') or die('\n<p><strong>Error:</strong> Unable to send file <strong>$archiveName.epub</strong>. Output buffer contains the following text (typically warnings or errors):<br>' . ob_get_contents() . '</p>')) {
-        //TODO: is this advisable/necessary?
-        if (ini_get('zlib.output_compression')) {
-          ini_set('zlib.output_compression', 'Off');
+  function __construct($sendHeaders = false, $archiveName = 'archive.zip',
+                       $contentType = 'application/zip') {
+    //TODO: is this advisable/necessary?
+    if (ini_get('zlib.output_compression')) {
+      ini_set('zlib.output_compression', 'Off');
+    }
+    if ($sendHeaders) {
+      $headerFile = null;
+      $headerLine = null;
+      if ( !headers_sent($headerFile, $headerLine)
+            or die('<p><strong>Error:</strong> Unable to send file '.
+                   '$archiveName. HTML Headers have already been sent from '.
+                   '<strong>$headerFile</strong> in line <strong>$headerLine'.
+                   '</strong></p>')) {
+        if ( (ob_get_contents() === false || ob_get_contents() == '')
+            or die('\n<p><strong>Error:</strong> Unable to send file '.
+                   '<strong>$archiveName.epub</strong>. Output buffer '.
+                   'already contains text (typically warnings or errors).</p>')) {
+          header('Pragma: public');
+          header('Last-Modified: ' . gmdate('D, d M Y H:i:s T'));
+          header('Expires: 0');
+          header('Accept-Ranges: bytes');
+          header('Connection: Keep-Alive');
+          header('Content-Type: ' . $contentType);
+          header('Content-Disposition: attachment; filename="' . $archiveName . '";');
+          header('Content-Transfer-Encoding: binary');
         }
-
-        header('Pragma: public');
-        header('Last-Modified: ' . gmdate('D, d M Y H:i:s T'));
-        header('Expires: 0');
-        header('Accept-Ranges: bytes');
-        //header('Connection: Keep-Alive');
-        header('Content-Type: ' . $contentType);
-        header('Content-Disposition: attachment; filename="' . $archiveName . '";');
-        header('Content-Transfer-Encoding: binary');
-        flush();
-        ob_end_flush();
       }
     }
+    flush();
+    // turn off output buffering
+    ob_end_flush();
   }
 
   function __destruct() {
@@ -171,6 +183,34 @@ class ZipStreamer {
     return false;
   }
 
+  /**
+   * Close the archive.
+   * A closed archive can no longer have new files added to it.
+   * @return bool $success
+   */
+  public function finalize() {
+  	if (!$this->isFinalized) {
+
+  		$cd = implode('', $this->cdRec);
+
+  		// print central directory
+  		echo $cd;
+
+  		// print end of central directory record
+  		OC_Log::write('ZipStreamer', 'buildEndOfCentralDirectoryRecord', OC_Log::DEBUG);
+  		echo $this->buildEndOfCentralDirectoryRecord(strlen($cd));
+
+  		flush();
+
+  		$this->isFinalized = true;
+  		$cd = null;
+  		$this->cdRec = null;
+
+  		return true;
+  	}
+  	return false;
+  }
+
   private function beginFile($filePath, $fileComment, $timestamp,
                   $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE, $dataLength = 0,
                   $gzLength = 0, $dataCRC32 = 0) {
@@ -184,34 +224,6 @@ class ZipStreamer {
     echo $localFileHeader;
 
     return array ($gpFlags, strlen($localFileHeader));
-  }
-
-  /**
-   * Close the archive.
-   * A closed archive can no longer have new files added to it.
-   * @return bool $success
-   */
-  public function finalize() {
-    if (!$this->isFinalized) {
-
-      $cd = implode('', $this->cdRec);
-
-      // print central directory
-      echo $cd;
-
-      // print end of central directory record
-      OC_Log::write('ZipStreamer', 'buildEndOfCentralDirectoryRecord', OC_Log::DEBUG);
-      echo $this->buildEndOfCentralDirectoryRecord(strlen($cd));
-
-      flush();
-
-      $this->isFinalized = true;
-      $cd = null;
-      $this->cdRec = null;
-
-      return true;
-    }
-    return false;
   }
 
   private function streamFileData($stream, $compress) {
