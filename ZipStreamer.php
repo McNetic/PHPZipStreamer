@@ -91,10 +91,10 @@ class ZipStreamer {
           header('Content-Transfer-Encoding: binary');
         }
       }
+      flush();
+      // turn off output buffering
+      ob_end_flush();
     }
-    flush();
-    // turn off output buffering
-    ob_end_flush();
   }
 
   function __destruct() {
