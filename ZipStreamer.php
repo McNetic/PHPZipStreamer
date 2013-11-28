@@ -171,6 +171,9 @@ class ZipStreamer {
       // build cdRec
       $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod, 0, 0, 0, self::EXT_FILE_ATTR_DIR, $this->offset);
 
+      // calc offset
+      $this->offset += $lfhLength;
+    
       return true;
     }
     return false;
