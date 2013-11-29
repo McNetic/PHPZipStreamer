@@ -396,8 +396,15 @@ class ZipStreamer {
         return $this->encode64($in, 32, $little_endian);
     }
 
+    /**
+     * this method encodes the given integer as hexadecimal value in the given order (i.e. little-endian)
+     * It will return -1, if the given integer is bigger than the requested bit number (16, 32, 64).
+     */
     function encode64($in, $pad = 64, $little_endian = true) {
         $in = decbin($in);
+        if (strlen($in) > $pad) {
+            $in = decbin(-1);  # needs 64 bit architecture to work
+        }
         $in = str_pad($in, $pad, '0', STR_PAD_LEFT);
         $in = substr($in, -$pad);
         $out = '';
