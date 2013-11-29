@@ -1,4 +1,4 @@
-<?php
+<<?php
 /**
  * Class to create zip files on the fly and stream directly to the HTTP client as the content is added.
  *
@@ -20,22 +20,15 @@
  * and
  * ZipStream by A. Grandt https://github.com/Grandt/PHPZip (http://www.phpclasses.org/package/6116)
  *
+ * Unix-File attributes according to
+ * http://unix.stackexchange.com/questions/14705/the-zip-formats-external-file-attribute
+ * 
  * @author Nicolai Ehemann (en@enlightened.de)
- * @author André Rothe (andre.rothe@zks.uni-leipzig.de)
- * @copyright 2013 Nicolai Ehemann, André Rothe
+ * @copyright 2013 Nicolai Ehemann
  * @license GNU GPL
- * @version 0.3
+ * @version 0.2
  */
 
-class GPFLAGS {
-    const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
-    const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
-}
-
-class GZMETHOD {
-    const STORE = 0x0000; //  0 - The file is stored (no compression)
-    const DEFLATE = 0x0008; //  8 - The file is Deflated
-}
 
 class ZipStreamer {
     const VERSION = "0.3";
@@ -43,11 +36,8 @@ class ZipStreamer {
     const ZIP_LOCAL_FILE_HEADER = 0x04034b50; // Local file header signature
     const ZIP_CENTRAL_FILE_HEADER = 0x02014b50; // Central file header signature
     const ZIP_END_OF_CENTRAL_DIRECTORY = 0x06054b50; // end of Central directory record
-    const ZIP64_CENTRAL_DIR_RECORD = 0x06064b50;
-    const ZIP64_CENTRAL_DIR_LOCATOR = 0x07064b50;
-
-    const EXT_FILE_ATTR_DIR = 0x41FF0010;   // FIXME: change it to 755
-    const EXT_FILE_ATTR_FILE = 0x81FF0000;  // FIXME: 644
+    const ZIP64_CENTRAL_DIR_RECORD = 0x06064b50; //zip64 end of central directory record
+    const ZIP64_CENTRAL_DIR_LOCATOR = 0x07064b50; // zip64 end of central directory locator
 
     //TODO: make this dynamic, depending on flags/compression methods
     const ATTR_VERSION_TO_EXTRACT = 0x2D; // Version needed to extract (min. 4.5)
@@ -112,6 +102,17 @@ class ZipStreamer {
         exit;
     }
 
+    private static function getExternalDirPermission() {
+        # 755
+        return UNIX::getPermission(UNIX::S_IFDIR, UNIX::S_IRWXU, UNIX::S_IRGRP, UNIX::S_IXGRP, UNIX::S_IROTH,
+                UNIX::S_IXOTH) + DOS::getPermission(DOS::DIR);
+    }
+
+    private static function getExternalFilePermission() {
+        # 544
+        return UNIX::getPermission(UNIX::S_IFREG + UNIX::S_IRUSR + UNIX::S_IXUSR + UNIX::S_IRGRP + UNIX::S_IROTH);
+    }
+
     /**
      * Add a file to the archive at the specified location and file name.
      *
@@ -146,7 +147,7 @@ class ZipStreamer {
         // build cdRec
         $zip64Ext = $this->buildZip64ExtendedInformationField($dataLength, $gzLength, $this->offset);
         $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod, $zip64Ext,
-                $dataCRC32, self::EXT_FILE_ATTR_FILE);
+                $dataCRC32, self::getExternalFilePermission());
 
         // calc offset
         $this->offset += $lfhLength + $gzLength;
@@ -180,7 +181,7 @@ class ZipStreamer {
             // the offset is the byte position of the localfileheader
             $zip64Ext = $this->buildZip64ExtendedInformationField(0, 0, $this->offset);
             $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod,
-                    $zip64Ext, 0, self::EXT_FILE_ATTR_DIR);
+                    $zip64Ext, 0, self::getExternalDirPermission());
 
             // calc offset where the next local file header starts
             $this->offset += $lfhLength;
@@ -267,7 +268,7 @@ class ZipStreamer {
     private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0, $offset = 0) {
         return ''
                 . $this->encode16(1) // header id (zip 64 ext)
-                . $this->encode16(28) // size of following data
+                . $this->encode16(28) // size of data
                 . $this->encode64($dataLength)
                 . $this->encode64($gzLength)
                 . $this->encode64($offset)
@@ -364,7 +365,7 @@ class ZipStreamer {
 
     // Utility methods ////////////////////////////////////////////////////////
 
-    private static function normalizeFilePath($filePath) {
+     private static function normalizeFilePath($filePath) {
         return trim(str_replace('\\', '/', $filePath), '/');
     }
 
@@ -398,7 +399,7 @@ class ZipStreamer {
     function encode64($in, $pad = 64, $little_endian = true) {
         $in = decbin($in);
         $in = str_pad($in, $pad, '0', STR_PAD_LEFT);
-        $in = substr($in, -$pad);        
+        $in = substr($in, -$pad);
         $out = '';
         for ($i = 0, $len = strlen($in); $i < $len; $i += 8) {
             $out .= chr(bindec(substr($in, $i, 8)));
@@ -407,4 +408,81 @@ class ZipStreamer {
             $out = strrev($out);
         return $out;
     }
+
 }
+
+abstract class Permission {
+
+    # ZIP permission layout
+    # TTTTsstrwxrwxrwx0000000000ADVSHR
+    # ^^^^____________________________ file type as explained above
+    #     ^^^_________________________ setuid, setgid, sticky
+    #        ^^^^^^^^^________________ permissions
+    #                 ^^^^^^^^________ This is the "lower-middle byte" your post mentions
+    #                         ^^^^^^^^ DOS attribute bits (reserved, reserved, archived, directory, volume, system, hidden, read-only
+
+    public static function getPermission() {
+        $result = 00;
+        $arg_list = func_get_args();
+        for ($i = 0; $i < func_num_args(); $i++) {
+            $result += $arg_list[$i];
+        }
+        return $result;
+    }
+}
+
+class UNIX extends Permission {
+
+    # Octal
+    const S_IFIFO = 0010000; /* named pipe (fifo) */
+    const S_IFCHR = 0020000; /* character special */
+    const S_IFDIR = 0040000; /* directory */
+    const S_IFBLK = 0060000; /* block special */
+    const S_IFREG = 0100000; /* regular */
+    const S_IFLNK = 0120000; /* symbolic link */
+    const S_IFSOCK = 0140000; /* socket */
+    const S_ISUID = 0004000; /* set user id on execution */
+    const S_ISGID = 0002000; /* set group id on execution */
+    const S_ISTXT = 0001000; /* sticky bit */
+    const S_IRWXU = 0000700; /* RWX mask for owner */
+    const S_IRUSR = 0000400; /* R for owner */
+    const S_IWUSR = 0000200; /* W for owner */
+    const S_IXUSR = 0000100; /* X for owner */
+    const S_IRWXG = 0000070; /* RWX mask for group */
+    const S_IRGRP = 0000040; /* R for group */
+    const S_IWGRP = 0000020; /* W for group */
+    const S_IXGRP = 0000010; /* X for group */
+    const S_IRWXO = 0000007; /* RWX mask for other */
+    const S_IROTH = 0000004; /* R for other */
+    const S_IWOTH = 0000002; /* W for other */
+    const S_IXOTH = 0000001; /* X for other */
+    const S_ISVTX = 0001000; /* save swapped text even after use */
+
+    public static function getPermission() {
+        $args = func_get_args();
+        return call_user_func_array('Permission::getPermission', $args) << 16;
+    }
+}
+
+class DOS extends Permission {
+
+    const READ_ONLY = 0x1;
+    const HIDDEN = 0x2;
+    const SYSTEM = 0x4;
+    const VOLUME = 0x8;
+    const DIR = 0x10;
+    const ARCHIVE = 0x20;
+    const RESERVED1 = 0x40;
+    const RESERVED2 = 0x80;
+}
+
+class GPFLAGS {
+    const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
+    const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
+}
+
+class GZMETHOD {
+    const STORE = 0x0000; //  0 - The file is stored (no compression)
+    const DEFLATE = 0x0008; //  8 - The file is Deflated
+}
+
