@@ -1,4 +1,4 @@
-<<?php
+<?php
 /**
  * Class to create zip files on the fly and stream directly to the HTTP client as the content is added.
  *
