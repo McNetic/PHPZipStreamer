@@ -20,336 +20,476 @@
  * and
  * ZipStream by A. Grandt https://github.com/Grandt/PHPZip (http://www.phpclasses.org/package/6116)
  *
+ * Unix-File attributes according to
+ * http://unix.stackexchange.com/questions/14705/the-zip-formats-external-file-attribute
+ * 
  * @author Nicolai Ehemann (en@enlightened.de)
  * @copyright 2013 Nicolai Ehemann
  * @license GNU GPL
  * @version 0.2
  */
 
-class GPFLAGS {
-  const ADD =           0x0008;  // ADD flag (sizes and crc32 are append in data descriptor
-  const EFS =           0x0800;  // EFS flag (UTF-8 encoded filename and/or comment
-};
-
-class GZMETHOD {
-  const STORE =         0x0000;  //  0 - The file is stored (no compression)
-  const DEFLATE =       0x0008;  //  8 - The file is Deflated
-}
 
 class ZipStreamer {
-  const VERSION = 0.2;
+    const VERSION = "0.3";
 
-  const ZIP_LOCAL_FILE_HEADER = "\x50\x4b\x03\x04"; // Local file header signature
-  const ZIP_CENTRAL_FILE_HEADER = "\x50\x4b\x01\x02"; // Central file header signature
-  const ZIP_END_OF_CENTRAL_DIRECTORY = "\x50\x4b\x05\x06"; //end of Central directory record
+    const ZIP_LOCAL_FILE_HEADER = 0x04034b50; // Local file header signature
+    const ZIP_CENTRAL_FILE_HEADER = 0x02014b50; // Central file header signature
+    const ZIP_END_OF_CENTRAL_DIRECTORY = 0x06054b50; // end of Central directory record
+    const ZIP64_CENTRAL_DIR_RECORD = 0x06064b50; //zip64 end of central directory record
+    const ZIP64_CENTRAL_DIR_LOCATOR = 0x07064b50; // zip64 end of central directory locator
 
-  const EXT_FILE_ATTR_DIR = "\x10\x00\xFF\x41";
-  const EXT_FILE_ATTR_FILE = "\x00\x00\xFF\x81";
+    //TODO: make this dynamic, depending on flags/compression methods
+    const ATTR_VERSION_TO_EXTRACT = 0x2D; // Version needed to extract (min. 4.5)
+    const ATTR_MADE_BY_VERSION = 0x032D; // Made By Version  (upper byte: UNIX, lower byte v4.5)
 
-  //TODO: make this dynamic, depending on flags/compression methods
-  const ATTR_VERSION_TO_EXTRACT = "\x14\x00"; // Version needed to extract
-  const ATTR_MADE_BY_VERSION = "\x1E\x03"; // Made By Version
+    const STREAM_CHUNK_SIZE = 1048576; // 1mb chunks
 
-  const STREAM_CHUNK_SIZE = 1048576; // 1mb chunks
+    private $cdRec = array(); // central directory
+    private $offset = 0; // offset of next file to be added
+    private $isFinalized = false;
 
-  private $cdRec = array(); // central directory
-  private $offset = 0; // offset of next file to be added
-  private $isFinalized = false;
-
-  /**
-   * Constructor.
-   *
-   * @param bool   $sendHeaders Send suitable headers to the HTTP client (assumes nothing was sent yet)
-   * @param string $archiveName Name to send to the HTTP client. Optional, defaults to "archive.zip".
-   * @param string $contentType Content mime type. Optional, defaults to "application/zip".
-   */
-  function __construct($sendHeaders = false, $archiveName = 'archive.zip',
-                       $contentType = 'application/zip') {
-    //TODO: is this advisable/necessary?
-    if (ini_get('zlib.output_compression')) {
-      ini_set('zlib.output_compression', 'Off');
-    }
-    if ($sendHeaders) {
-      $headerFile = null;
-      $headerLine = null;
-      if ( !headers_sent($headerFile, $headerLine)
-            or die('<p><strong>Error:</strong> Unable to send file '.
-                   '$archiveName. HTML Headers have already been sent from '.
-                   '<strong>$headerFile</strong> in line <strong>$headerLine'.
-                   '</strong></p>')) {
-        if ( (ob_get_contents() === false || ob_get_contents() == '')
-            or die('\n<p><strong>Error:</strong> Unable to send file '.
-                   '<strong>$archiveName.epub</strong>. Output buffer '.
-                   'already contains text (typically warnings or errors).</p>')) {
-          header('Pragma: public');
-          header('Last-Modified: ' . gmdate('D, d M Y H:i:s T'));
-          header('Expires: 0');
-          header('Accept-Ranges: bytes');
-          header('Connection: Keep-Alive');
-          header('Content-Type: ' . $contentType);
-          header('Content-Disposition: attachment; filename="' . $archiveName . '";');
-          header('Content-Transfer-Encoding: binary');
+    /**
+     * Constructor.
+     *
+     * @param bool   $sendHeaders Send suitable headers to the HTTP client (assumes nothing was sent yet)
+     * @param string $archiveName Name to send to the HTTP client. Optional, defaults to "archive.zip".
+     * @param string $contentType Content mime type. Optional, defaults to "application/zip".
+     */
+    function __construct($sendHeaders = false, $archiveName = 'archive.zip', $contentType = 'application/zip') {
+        //TODO: is this advisable/necessary?
+        if (ini_get('zlib.output_compression')) {
+            ini_set('zlib.output_compression', 'Off');
         }
-      }
-      flush();
-      // turn off output buffering
-      ob_end_flush();
-    }
-  }
-
-  function __destruct() {
-    $this->isFinalized = true;
-    $this->cdRec = null;
-    exit;
-  }
-
-  /**
-   * Add a file to the archive at the specified location and file name.
-   *
-   * @param string $stream      Stream to read data from
-   * @param string $filePath    Filepath and name to be used in the archive.
-   * @param int    $timestamp   (Optional) Timestamp for the added file, if omitted or set to 0, the current time will be used.
-   * @param string $fileComment (Optional) Comment to be added to the archive for this file. To use fileComment, timestamp must be given.
-   * @param bool   $compress    (Optional) Compress file, if set to false the file will only be stored. Default FALSE.
-   * @return bool $success
-   */
-  public function addFileFromStream($stream, $filePath, $timestamp = 0,
-                  $fileComment = null, $compress = false) {
-    if ($this->isFinalized) {
-      return false;
-    }
-
-    if (!is_resource($stream) || get_resource_type($stream) != 'stream') {
-      return false;
-    }
-
-    $filePath = self::normalizeFilePath($filePath);
-
-    $gpFlags = GPFLAGS::ADD;
-    if ($compress) {
-      $gzMethod = GZMETHOD::DEFLATE;
-    } else {
-      $gzMethod = GZMETHOD::STORE;
+        if ($sendHeaders) {
+            $headerFile = null;
+            $headerLine = null;
+            if (!headers_sent($headerFile, $headerLine)
+                    or die(
+                            '<p><strong>Error:</strong> Unable to send file '
+                                    . '$archiveName. HTML Headers have already been sent from '
+                                    . '<strong>$headerFile</strong> in line <strong>$headerLine'
+                                    . '</strong></p>')) {
+                if ((ob_get_contents() === false || ob_get_contents() == '')
+                        or die(
+                                '\n<p><strong>Error:</strong> Unable to send file '
+                                        . '<strong>$archiveName.epub</strong>. Output buffer '
+                                        . 'already contains text (typically warnings or errors).</p>')) {
+                    header('Pragma: public');
+                    header('Last-Modified: '
+                            . gmdate('D, d M Y H:i:s T'));
+                    header('Expires: 0');
+                    header('Accept-Ranges: bytes');
+                    header('Connection: Keep-Alive');
+                    header('Content-Type: '
+                            . $contentType);
+                    header(
+                            'Content-Disposition: attachment; filename="'
+                                    . $archiveName
+                                    . '";');
+                    header('Content-Transfer-Encoding: binary');
+                }
+            }
+            flush();
+            // turn off output buffering
+            ob_end_flush();
+        }
     }
 
-    list ($gpFlags, $lfhLength) = $this->beginFile($filePath, $fileComment, $timestamp, $gpFlags, $gzMethod);
-
-    list ($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
-
-    #$this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
-
-    // build cdRec
-    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength, $gzLength, $dataCRC32, self::EXT_FILE_ATTR_FILE, $this->offset);
-
-    // calc offset
-    $this->offset += $lfhLength + $gzLength;
-
-    return true;
-  }
-
-  /**
-   * Add an empty directory entry to the zip archive.
-   *
-   * @param string $directoryPath  Directory Path and name to be added to the archive.
-   * @param int    $timestamp      (Optional) Timestamp for the added directory, if omitted or set to 0, the current time will be used.
-   * @param string $fileComment    (Optional) Comment to be added to the archive for this directory. To use fileComment, timestamp must be given.
-   * @return bool $success
-   */
-  public function addEmptyDir($directoryPath, $timestamp = 0, $fileComment = null) {
-    if ($this->isFinalized) {
-      return false;
+    function __destruct() {
+        $this->isFinalized = true;
+        $this->cdRec = null;
+        exit;
     }
 
-    $directoryPath = self::normalizeFilePath($directoryPath).'/';
-
-    if (strlen($directoryPath) > 0) {
-      $gpFlags = 0x0000; // Compression type 0 = stored
-      $gzMethod = GZMETHOD::STORE; // Compression type 0 = stored
-
-      list ($gpFlags, $lfhLength) = $this->beginFile($directoryPath, $fileComment, $timestamp, $gpFlags, $gzMethod);
-
-      // build cdRec
-      $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod, 0, 0, 0, self::EXT_FILE_ATTR_DIR, $this->offset);
-
-      return true;
+    private static function getExternalDirPermission() {
+        # 755
+        return UNIX::getPermission(UNIX::S_IFDIR, UNIX::S_IRWXU, UNIX::S_IRGRP, UNIX::S_IXGRP, UNIX::S_IROTH,
+                UNIX::S_IXOTH) + DOS::getPermission(DOS::DIR);
     }
-    return false;
-  }
 
-  /**
-   * Close the archive.
-   * A closed archive can no longer have new files added to it.
-   * @return bool $success
-   */
-  public function finalize() {
-  	if (!$this->isFinalized) {
-
-  		$cd = implode('', $this->cdRec);
-
-  		// print central directory
-  		echo $cd;
-
-  		// print end of central directory record
-  		echo $this->buildEndOfCentralDirectoryRecord(strlen($cd));
-
-  		flush();
-
-  		$this->isFinalized = true;
-  		$cd = null;
-  		$this->cdRec = null;
-
-  		return true;
-  	}
-  	return false;
-  }
-
-  private function beginFile($filePath, $fileComment, $timestamp,
-                  $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE, $dataLength = 0,
-                  $gzLength = 0, $dataCRC32 = 0) {
-    $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
-    $isCommentUTF8 = !empty($fileComment) && mb_check_encoding($fileComment, 'UTF-8') && !mb_check_encoding($fileComment, 'ASCII');
-    if ($isFileUTF8 || $isCommentUTF8) {
-      $gpFlags |= GPFLAGS::EFS;
+    private static function getExternalFilePermission() {
+        # 544
+        return UNIX::getPermission(UNIX::S_IFREG + UNIX::S_IRUSR + UNIX::S_IXUSR + UNIX::S_IRGRP + UNIX::S_IROTH);
     }
-    $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength, $gzLength, $dataCRC32);
-    echo $localFileHeader;
 
-    return array ($gpFlags, strlen($localFileHeader));
-  }
+    /**
+     * Add a file to the archive at the specified location and file name.
+     *
+     * @param string $stream      Stream to read data from
+     * @param string $filePath    Filepath and name to be used in the archive.
+     * @param int    $timestamp   (Optional) Timestamp for the added file, if omitted or set to 0, the current time will be used.
+     * @param string $fileComment (Optional) Comment to be added to the archive for this file. To use fileComment, timestamp must be given.
+     * @param bool   $compress    (Optional) Compress file, if set to false the file will only be stored. Default FALSE.
+     * @return bool $success
+     */
+    public function addFileFromStream($stream, $filePath, $timestamp = 0, $fileComment = null, $compress = false) {
+        if ($this->isFinalized) {
+            return false;
+        }
 
-  private function streamFileData($stream, $compress) {
-    $dataLength = 0;
-    $gzLength = 0;
-    $hashCtx = hash_init('crc32b');
+        if (!is_resource($stream) || get_resource_type($stream) != 'stream') {
+            return false;
+        }
 
-    while (!feof($stream)) {
-      $data = fread($stream, self::STREAM_CHUNK_SIZE);
-      $dataLength += strlen($data);
-      hash_update($hashCtx, $data);
-      if ($compress) {
-        //TODO: this is broken.
-        $data = gzdeflate($data);
-      }
-      $gzLength += strlen($data);
-      echo $data;
+        $filePath = self::normalizeFilePath($filePath);
 
-      flush();
+        $gpFlags = GPFLAGS::ADD;
+        if ($compress) {
+            $gzMethod = GZMETHOD::DEFLATE;
+        } else {
+            $gzMethod = GZMETHOD::STORE;
+        }
+
+        list($gpFlags, $lfhLength) = $this->beginFile($filePath, $fileComment, $timestamp, $gpFlags, $gzMethod);
+        list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
+
+        // build cdRec
+        $zip64Ext = $this->buildZip64ExtendedInformationField($dataLength, $gzLength, $this->offset);
+        $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod, $zip64Ext,
+                $dataCRC32, self::getExternalFilePermission());
+
+        // calc offset
+        $this->offset += $lfhLength + $gzLength;
+
+        return true;
     }
-    return array ($dataLength, $gzLength, unpack('N', hash_final($hashCtx, true))[1]);
-  }
 
-  private function buildLocalFileHeader($filePath, $timestamp,
-                  $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE, $dataLength = 0,
-                  $gzLength = 0, $dataCRC32 = 0) {
-    $dosTime = self::getDosTime($timestamp);
+    /**
+     * Add an empty directory entry to the zip archive.
+     *
+     * @param string $directoryPath  Directory Path and name to be added to the archive.
+     * @param int    $timestamp      (Optional) Timestamp for the added directory, if omitted or set to 0, the current time will be used.
+     * @param string $fileComment    (Optional) Comment to be added to the archive for this directory. To use fileComment, timestamp must be given.
+     * @return bool $success
+     */
+    public function addEmptyDir($directoryPath, $timestamp = 0, $fileComment = null) {
+        if ($this->isFinalized) {
+            return false;
+        }
 
-    return ''
-      . self::ZIP_LOCAL_FILE_HEADER   // local file header signature     4 bytes  (0x04034b50)
-      . self::ATTR_VERSION_TO_EXTRACT //version needed to extract       2 bytes
-      . pack('v', $gpFlags)           //general purpose bit flag        2 bytes
-      . pack('v', $gzMethod)            //compression method              2 bytes
-      . $dosTime                      //last mod file time              2 bytes
-                                      //last mod file date              2 bytes
-      . pack('V', $dataCRC32)         //crc-32                          4 bytes
-      . pack('V', $gzLength)          //compressed size                 4 bytes
-      . pack('V', $dataLength)        //uncompressed size               4 bytes
-      . pack('v', strlen($filePath))  //file name length                2 bytes
-      //TODO: implement?
-      . pack('v', 0)                  //extra field length              2 bytes
-      . $filePath                     //file name (variable size)
-      //TODO: implement?
-      . '';                           //extra field (variable size)
-  }
+        $directoryPath = self::normalizeFilePath($directoryPath)
+                . '/';
 
-  private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
-                  $gzMethod, $dataLength, $gzLength, $dataCRC32, $extFileAttr,
-                  $offset) {
-    $dosTime = self::getDosTime($timestamp);
+        if (strlen($directoryPath) > 0) {
+            $gpFlags = 0x0000; // Compression type 0 = stored
+            $gzMethod = GZMETHOD::STORE; // Compression type 0 = stored
 
-    return ''
-      . self::ZIP_CENTRAL_FILE_HEADER   //central file header signature   4 bytes  (0x02014b50)
-      . self::ATTR_MADE_BY_VERSION      //version made by                 2 bytes
-      . self::ATTR_VERSION_TO_EXTRACT   //version needed to extract       2 bytes
-      . pack('v', $gpFlags)             //general purpose bit flag        2 bytes
-      . pack('v', $gzMethod)              //compression method              2 bytes
-      . $dosTime                        //last mod file time              2 bytes
-                                        //last mod file date              2 bytes
-      . pack('V', $dataCRC32)           //crc-32                          4 bytes
-      . pack('V', $gzLength)            //compressed size                 4 bytes
-      . pack('V', $dataLength)          //uncompressed size               4 bytes
-      . pack('v', strlen($filePath))    //file name length                2 bytes
-      //TODO: implement?
-      . pack('v', 0)                    //extra field length              2 bytes
-      //TODO: implement?
-      . pack('v', 0)                    //file comment length             2 bytes
-      . pack('v', 0)                    //disk number start               2 bytes
-      . pack('v', 0)                    //internal file attributes        2 bytes
-      . $extFileAttr                    //external file attributes        4 bytes
-      . pack('V', $offset)              //relative offset of local header 4 bytes
-      . $filePath                       //file name (variable size)
-      //TODO: implement?
-      . ''                              //extra field (variable size)
-      //TODO: implement?
-      . '';                             //file comment (variable size)
-  }
+            list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, $fileComment, $timestamp, $gpFlags, $gzMethod);
 
-  private function buildEndOfCentralDirectoryRecord($cdRecLength) {
-    $cdRecCount = sizeof($this->cdRec);
+            // build cdRec
+            // the offset is the byte position of the localfileheader
+            $zip64Ext = $this->buildZip64ExtendedInformationField(0, 0, $this->offset);
+            $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod,
+                    $zip64Ext, 0, self::getExternalDirPermission());
 
-    return ''
-      . self::ZIP_END_OF_CENTRAL_DIRECTORY  //end of central dir signature    4 bytes  (0x06054b50)
-      . pack('v', 0)                        //number of this disk             2 bytes
-      . pack('v', 0)                        //number of the disk with the
-                                            //start of the central directory  2 bytes
-      . pack('v', $cdRecCount)              //total number of entries in the
-                                            //central directory on this disk  2 bytes
-      . pack('v', $cdRecCount)              //total number of entries in
-                                            //the central directory           2 bytes
-      . pack('V', $cdRecLength)             //size of the central directory   4 bytes
-      . pack('V', $this->offset)            //offset of start of central
-                                            //directory with respect to
-                                            //the starting disk number        4 bytes
-      //TODO: implement?
-      . pack('v', 0)                        //.ZIP file comment length        2 bytes
-      //TODO: implement?
-      . '';                                 //.ZIP file comment       (variable size)
-  }
+            // calc offset where the next local file header starts
+            $this->offset += $lfhLength;
 
-  private function addDataDescriptor($dataLength,  $gzLength, $dataCRC32) {
-    echo $this->buildDataDescriptor($dataCRC32, $gzLength, $dataLength);
-  }
+            return true;
+        }
+        return false;
+    }
 
-  private function buildDataDescriptor($dataCRC32, $gzLength, $dataLength) {
+    /**
+     * Close the archive.
+     * A closed archive can no longer have new files added to it.
+     * @return bool $success
+     */
+    public function finalize() {
+        if (!$this->isFinalized) {
 
-    return ''
-      . pack('V', $dataCRC32)    //crc-32                          4 bytes
-      . pack('V', $gzLength)     //compressed size                 4 bytes
-      . pack('V', $dataLength);  //uncompressed size               4 bytes
-  }
+            // print central directory
+            $cd = implode('', $this->cdRec);
+            echo $cd;
 
-  // Utility methods ////////////////////////////////////////////////////////
+            // print the zip64 end of central directory record
+            echo $this->buildZip64EndOfCentralDirectoryRecord(strlen($cd));
 
-  private static function normalizeFilePath($filePath) {
-    return trim(str_replace('\\', '/', $filePath), '/');
-  }
+            // print the zip64 end of central directory locator
+            echo $this->buildZip64EndOfCentralDirectoryLocator($this->offset + strlen($cd));
 
-  /**
-   * Calculate the 2 byte dostime used in the zip entries.
-   *
-   * @param int $timestamp
-   * @return 2-byte encoded DOS Date
-   */
-  private static function getDosTime($timestamp = 0) {
-  	$timestamp = (int)$timestamp;
-  	$oldTZ = @date_default_timezone_get();
-  	date_default_timezone_set('UTC');
-  	$date = ($timestamp == 0 ? getdate() : getdate($timestamp));
-  	date_default_timezone_set($oldTZ);
-  	if ($date['year'] >= 1980) {
-  		return pack('V', (($date['mday'] + ($date['mon'] << 5) + (($date['year']-1980) << 9)) << 16) |
-  				(($date['seconds'] >> 1) + ($date['minutes'] << 5) + ($date['hours'] << 11)));
-  	}
-  	return "\x00\x00\x00\x00";
-  }
+            // print end of central directory record
+            echo $this->buildEndOfCentralDirectoryRecord();
+
+            flush();
+
+            $this->isFinalized = true;
+            $cd = null;
+            $this->cdRec = null;
+
+            return true;
+        }
+        return false;
+    }
+
+    private function beginFile($filePath, $fileComment, $timestamp, $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE,
+            $dataLength = 0, $gzLength = 0, $dataCRC32 = 0) {
+
+        $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
+        $isCommentUTF8 = !empty($fileComment) && mb_check_encoding($fileComment, 'UTF-8')
+                && !mb_check_encoding($fileComment, 'ASCII');
+
+        if ($isFileUTF8 || $isCommentUTF8) {
+            $gpFlags |= GPFLAGS::EFS;
+        }
+
+        $zip64Ext = $this->buildZip64ExtendedInformationField($dataLength, $gzLength, $this->offset);
+        $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzMethod, $zip64Ext,
+                $dataCRC32);
+
+        echo $localFileHeader;
+
+        return array($gpFlags, strlen($localFileHeader));
+    }
+
+    private function streamFileData($stream, $compress) {
+        $dataLength = 0;
+        $gzLength = 0;
+        $hashCtx = hash_init('crc32b');
+
+        while (!feof($stream)) {
+            $data = fread($stream, self::STREAM_CHUNK_SIZE);
+            $dataLength += strlen($data);
+            hash_update($hashCtx, $data);
+            if ($compress) {
+                //TODO: this is broken.
+                $data = gzdeflate($data);
+            }
+            $gzLength += strlen($data);
+            echo $data;
+
+            flush();
+        }
+        $binary = unpack('N', hash_final($hashCtx, true));
+        return array($dataLength, $gzLength, $binary[1]);
+    }
+
+    private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0, $offset = 0) {
+        return ''
+                . $this->encode16(1) // header id (zip 64 ext)
+                . $this->encode16(28) // size of data
+                . $this->encode64($dataLength)
+                . $this->encode64($gzLength)
+                . $this->encode64($offset)
+                . $this->encode32(0);
+    }
+
+    private function buildLocalFileHeader($filePath, $timestamp, $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE,
+            $zip64Ext, $dataCRC32 = 0) {
+        $dosTime = self::getDosTime($timestamp);
+
+        return ''
+                . $this->encode32(self::ZIP_LOCAL_FILE_HEADER) // local file header signature     4 bytes  (0x04034b50)
+                . $this->encode16(self::ATTR_VERSION_TO_EXTRACT) // version needed to extract       2 bytes
+                . $this->encode16($gpFlags) // general purpose bit flag        2 bytes
+                . $this->encode16($gzMethod) // compression method              2 bytes
+                . $this->encode32($dosTime) // last mod file time              2 bytes
+        // last mod file date              2 bytes
+                . $this->encode32($dataCRC32) // crc-32                          4 bytes
+                . $this->encode32(-1) // compressed size                 4 bytes
+                . $this->encode32(-1) // uncompressed size               4 bytes
+                . $this->encode16(strlen($filePath)) // file name length                2 bytes
+                . $this->encode16(strlen($zip64Ext)) // extra field length              2 bytes
+                . $filePath // file name (variable size)       (little endian encoded, TODO: it could be UTF?)
+                . $zip64Ext; // extra field (variable size)
+    }
+
+    private function buildZip64EndOfCentralDirectoryRecord($cdRecLength) {
+        $cdRecCount = sizeof($this->cdRec);
+
+        return ''
+                . $this->encode32(self::ZIP64_CENTRAL_DIR_RECORD) // zip64 end of central dir signature                       4 bytes  (0x06064b50)
+                . $this->encode64(44) // size of zip64 end of central directory record                8 bytes
+                . $this->encode16(self::ATTR_MADE_BY_VERSION) //version made by                 2 bytes
+                . $this->encode16(self::ATTR_VERSION_TO_EXTRACT) //version needed to extract       2 bytes
+                . $this->encode32(0) // number of this disk             4 bytes
+                . $this->encode32(0) // number of the disk with the start of the central directory  4 bytes
+                . $this->encode64($cdRecCount) // total number of entries in the central directory on this disk  8 bytes
+                . $this->encode64($cdRecCount) // total number of entries in the central directory               8 bytes
+                . $this->encode64($cdRecLength) // size of the central directory   8 bytes
+                . $this->encode64($this->offset) // offset of start of central directory with respect to the starting disk number        8 bytes
+                . ''; // zip64 extensible data sector    (variable size)
+
+    }
+
+    private function buildZip64EndOfCentralDirectoryLocator($zip64RecStart) {
+
+        return ''
+                . $this->encode32(self::ZIP64_CENTRAL_DIR_LOCATOR) //zip64 end of central dir locator signature 4 bytes  (0x07064b50)
+                . $this->encode32(0) // number of the disk with the start of the zip64 end of central directory 4 bytes
+                . $this->encode64($zip64RecStart) // relative offset of the zip64 end of central directory record 8 bytes
+                . $this->encode32(0); // total number of disks           4 bytes
+    }
+
+    private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod, $zip64Ext, $dataCRC32,
+            $extFileAttr) {
+        $dosTime = self::getDosTime($timestamp);
+
+        return ''
+                . $this->encode32(self::ZIP_CENTRAL_FILE_HEADER) //central file header signature   4 bytes  (0x02014b50)
+                . $this->encode16(self::ATTR_MADE_BY_VERSION) //version made by                 2 bytes
+                . $this->encode16(self::ATTR_VERSION_TO_EXTRACT) //version needed to extract       2 bytes
+                . $this->encode16($gpFlags) //general purpose bit flag        2 bytes
+                . $this->encode16($gzMethod) //compression method              2 bytes
+                . $this->encode32($dosTime) //last mod file time              2 bytes
+        //last mod file date              2 bytes
+                . $this->encode32($dataCRC32) //crc-32                          4 bytes
+                . $this->encode32(-1) //compressed size                 4 bytes
+                . $this->encode32(-1) //uncompressed size               4 bytes
+                . $this->encode16(strlen($filePath)) //file name length                2 bytes
+                . $this->encode16(strlen($zip64Ext)) //extra field length              2 bytes
+                . $this->encode16(0) //file comment length             2 bytes
+                . $this->encode16(-1) //disk number start               2 bytes
+                . $this->encode16(0) //internal file attributes        2 bytes
+                . $this->encode32($extFileAttr) //external file attributes        4 bytes
+                . $this->encode32(-1) //relative offset of local header 4 bytes
+                . $filePath //file name                       (variable size)
+                . $zip64Ext //extra field                     (variable size)
+                . ''; //file comment                    (variable size)
+    }
+
+    private function buildEndOfCentralDirectoryRecord() {
+
+        return ''
+                . $this->encode32(self::ZIP_END_OF_CENTRAL_DIRECTORY) // end of central dir signature    4 bytes  (0x06064b50)
+                . $this->encode16(-1) // number of this disk             2 bytes
+                . $this->encode16(-1) // number of the disk with the start of the central directory  2 bytes
+                . $this->encode16(-1) // total number of entries in the central directory on this disk  2 bytes
+                . $this->encode16(-1) // total number of entries in the central directory           2 bytes
+                . $this->encode32(-1) // size of the central directory   4 bytes
+                . $this->encode32(-1) // offset of start of central directory with respect to the starting disk number        4 bytes
+                . $this->encode16(0) // .ZIP file comment length        2 bytes
+                . ''; // .ZIP file comment       (variable size)   
+    }
+
+    // Utility methods ////////////////////////////////////////////////////////
+
+     private static function normalizeFilePath($filePath) {
+        return trim(str_replace('\\', '/', $filePath), '/');
+    }
+
+    /**
+     * Calculate the 2 byte dostime used in the zip entries.
+     *
+     * @param int $timestamp
+     * @return 2-byte encoded DOS Date
+     */
+    private static function getDosTime($timestamp = 0) {
+        $timestamp = (int) $timestamp;
+        $oldTZ = @date_default_timezone_get();
+        date_default_timezone_set('UTC');
+        $date = ($timestamp == 0 ? getdate() : getdate($timestamp));
+        date_default_timezone_set($oldTZ);
+        if ($date['year'] >= 1980) {
+            return (($date['mday'] + ($date['mon'] << 5) + (($date['year'] - 1980) << 9)) << 16)
+                    | (($date['seconds'] >> 1) + ($date['minutes'] << 5) + ($date['hours'] << 11));
+        }
+        return 0x0000;
+    }
+
+    function encode16($in, $little_endian = true) {
+        return $this->encode64($in, 16, $little_endian);
+    }
+
+    function encode32($in, $little_endian = true) {
+        return $this->encode64($in, 32, $little_endian);
+    }
+
+    /**
+     * this method encodes the given integer as hexadecimal value in the given order (i.e. little-endian)
+     * It will return -1, if the given integer is bigger than the requested bit number (16, 32, 64).
+     */
+    function encode64($in, $pad = 64, $little_endian = true) {
+        $in = decbin($in);
+        if (strlen($in) > $pad) {
+            $in = decbin(-1);  # needs 64 bit architecture to work
+        }
+        $in = str_pad($in, $pad, '0', STR_PAD_LEFT);
+        $in = substr($in, -$pad);
+        $out = '';
+        for ($i = 0, $len = strlen($in); $i < $len; $i += 8) {
+            $out .= chr(bindec(substr($in, $i, 8)));
+        }
+        if ($little_endian)
+            $out = strrev($out);
+        return $out;
+    }
 
 }
+
+abstract class Permission {
+
+    # ZIP permission layout
+    # TTTTsstrwxrwxrwx0000000000ADVSHR
+    # ^^^^____________________________ file type as explained above
+    #     ^^^_________________________ setuid, setgid, sticky
+    #        ^^^^^^^^^________________ permissions
+    #                 ^^^^^^^^________ This is the "lower-middle byte" your post mentions
+    #                         ^^^^^^^^ DOS attribute bits (reserved, reserved, archived, directory, volume, system, hidden, read-only
+
+    public static function getPermission() {
+        $result = 00;
+        $arg_list = func_get_args();
+        for ($i = 0; $i < func_num_args(); $i++) {
+            $result += $arg_list[$i];
+        }
+        return $result;
+    }
+}
+
+class UNIX extends Permission {
+
+    # Octal
+    const S_IFIFO = 0010000; /* named pipe (fifo) */
+    const S_IFCHR = 0020000; /* character special */
+    const S_IFDIR = 0040000; /* directory */
+    const S_IFBLK = 0060000; /* block special */
+    const S_IFREG = 0100000; /* regular */
+    const S_IFLNK = 0120000; /* symbolic link */
+    const S_IFSOCK = 0140000; /* socket */
+    const S_ISUID = 0004000; /* set user id on execution */
+    const S_ISGID = 0002000; /* set group id on execution */
+    const S_ISTXT = 0001000; /* sticky bit */
+    const S_IRWXU = 0000700; /* RWX mask for owner */
+    const S_IRUSR = 0000400; /* R for owner */
+    const S_IWUSR = 0000200; /* W for owner */
+    const S_IXUSR = 0000100; /* X for owner */
+    const S_IRWXG = 0000070; /* RWX mask for group */
+    const S_IRGRP = 0000040; /* R for group */
+    const S_IWGRP = 0000020; /* W for group */
+    const S_IXGRP = 0000010; /* X for group */
+    const S_IRWXO = 0000007; /* RWX mask for other */
+    const S_IROTH = 0000004; /* R for other */
+    const S_IWOTH = 0000002; /* W for other */
+    const S_IXOTH = 0000001; /* X for other */
+    const S_ISVTX = 0001000; /* save swapped text even after use */
+
+    public static function getPermission() {
+        $args = func_get_args();
+        return call_user_func_array('Permission::getPermission', $args) << 16;
+    }
+}
+
+class DOS extends Permission {
+
+    const READ_ONLY = 0x1;
+    const HIDDEN = 0x2;
+    const SYSTEM = 0x4;
+    const VOLUME = 0x8;
+    const DIR = 0x10;
+    const ARCHIVE = 0x20;
+    const RESERVED1 = 0x40;
+    const RESERVED2 = 0x80;
+}
+
+class GPFLAGS {
+    const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
+    const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
+}
+
+class GZMETHOD {
+    const STORE = 0x0000; //  0 - The file is stored (no compression)
+    const DEFLATE = 0x0008; //  8 - The file is Deflated
+}
+
