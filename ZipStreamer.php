@@ -55,7 +55,7 @@ class ZipStreamer {
   /** @var array central directory record */
   private $cdRec = array();
   /** @var int offset of next file to be added */
-  private $offset = 0;
+  private $offset;
   /** @var boolean indicates zip is finalized and sent to client; no further addition possible */
   private $isFinalized = false;
 
@@ -105,6 +105,7 @@ class ZipStreamer {
                                                  UNIX::S_IRWXU | UNIX::S_IRGRP | UNIX::S_IXGRP |
                                                  UNIX::S_IROTH | UNIX::S_IXOTH) |
                             DOS::getExtFileAttr(DOS::DIR);
+    $this->offset = Count64::construct(0);
   }
 
   function __destruct() {
@@ -149,7 +150,7 @@ class ZipStreamer {
         $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile);
 
     // calc offset
-    $this->offset += $lfhLength + $gzLength;
+    $this->offset->add($lfhLength)->add($gzLength);
 
     return true;
   }
@@ -180,7 +181,7 @@ class ZipStreamer {
           0, 0, 0, $this->extFileAttrDir);
 
       // calc offset
-      $this->offset += $lfhLength;
+      $this->offset->add($lfhLength);
 
       return true;
     }
@@ -239,19 +240,19 @@ class ZipStreamer {
   }
 
   private function streamFileData($stream, $compress) {
-    $dataLength = 0;
-    $gzLength = 0;
+    $dataLength = Count64::construct(0);
+    $gzLength = Count64::construct(0);
     $hashCtx = hash_init('crc32b');
 
     while (!feof($stream)) {
       $data = fread($stream, self::STREAM_CHUNK_SIZE);
-      $dataLength += strlen($data);
+      $dataLength->add(strlen($data));
       hash_update($hashCtx, $data);
       if ($compress) {
         //TODO: this is broken.
         $data = gzdeflate($data);
       }
-      $gzLength += strlen($data);
+      $gzLength->add(strlen($data));
       echo $data;
 
       flush();
@@ -314,9 +315,9 @@ class ZipStreamer {
   }
 
   private function buildZip64EndOfCentralDirectoryLocator($cdRecLength) {
-    $zip64RecStart = $this->offset + $cdRecLength;
+    $zip64RecStart = Count64::construct($this->offset)->add($cdRecLength);
 
-    return ''
+        return ''
         . $this->pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
         . $this->pack32le(0)                                      // number of the disk with the start of the
                                                                   // zip64 end of central directory              4 bytes
@@ -426,11 +427,119 @@ class ZipStreamer {
    * @return string 8 byte binary string
    */
   private static function pack64le($data) {
-    $highBytes = ($data & self::INT64_HIGH_MAP) >> 32;
-    $lowBytes = $data & self::INT64_LOW_MAP;
-    return pack('VV', $lowBytes, $highBytes);
+  if (is_object($data)) {
+    if ("Count64_32" == get_class($data)) {
+      $hiBytess = $data->_getValue()[0];
+      $loBytess = $data->_getValue()[1];
+    } else {
+      $hiBytess = ($data->_getValue() & self::INT64_HIGH_MAP) >> 32;
+      $loBytess = $data->_getValue() & self::INT64_LOW_MAP;
+    }
+  } else {
+    $hiBytess = ($data & self::INT64_HIGH_MAP) >> 32;
+    $loBytess = $data & self::INT64_LOW_MAP;
+  }
+  return pack('VV', $loBytess, $hiBytess);
+  }
+}
+
+abstract class Count64Base {
+  function __construct($value = 0) {
+    $this->set($value);
+  }
+  abstract public function set($value);
+  abstract public function add($value);
+  abstract public function _getValue();
+
+  const EXCEPTION_SET_INVALID_ARGUMENT = "Count64 object can only be set() to integer or Count64 values";
+  const EXCEPTION_ADD_INVALID_ARGUMENT = "Count64 object can only be add()ed integer or Count64 values";
+}
+
+class Count64_32 extends Count64Base{
+  private $loBytes;
+  private $hiBytes;
+
+  public function _getValue() {
+    return array($this->hiBytes, $this->loBytes);
   }
 
+  public function set($value) {
+    if (is_int($value)) {
+      $this->loBytes = $value;
+      $this->hiBytes = 0;
+    } else if (is_object($value) && __CLASS__ == get_class($value)) {
+      $value = $value->_getValue();
+      $this->hiBytes = $value[0];
+      $this->loBytes = $value[1];
+    } else {
+      throw Exception(self::EXCEPTION_SET_INVALID_ARGUMENT);
+    }
+    return $this;
+  }
+
+  public function add($value) {
+    if (is_int($value)) {
+      $sum = (int)($this->loBytes + $value);
+      // overflow!
+      if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
+      || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        $this->hiBytes = (int)($this->hiBytes + 1);
+      }
+      $this->loBytes = $sum;
+    } else if (is_object($value) && __CLASS__ == get_class($value)) {
+      $value = $value->_getValue();
+      $sum = (int)($this->loBytes + $value[1]);
+      if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
+      || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        $this->hiBytes = (int)($this->hiBytes + 1);
+      }
+      $this->loBytes = $sum;
+      $this->hiBytes = (int)($this->hiBytes + $value[0]);
+    } else {
+      throw Exception(self::EXCEPTION_ADD_INVALID_ARGUMENT);
+    }
+    return $this;
+  }
+}
+
+class Count64_64 extends Count64Base {
+  private $value;
+
+  public function _getValue() {
+    return $this->value;
+  }
+
+  public function set($value) {
+    if (is_int($value)) {
+      $this->value = $value;
+    } else if (is_object($value) && __CLASS__ == get_class($value)) {
+      $this->value = $value->_getValue();
+    } else {
+      throw Exception(self::EXCEPTION_SET_INVALID_ARGUMENT);
+    }
+    return $this;
+  }
+
+  public function add($value) {
+    if (is_int($value)) {
+      $this->value = (int)($this->value + $value);
+    } else if (is_object($value) && __CLASS__ == get_class($value)) {
+      $this->value = (int)($this->value + $value->_getValue());
+    } else {
+      throw Exception(self::EXCEPTION_ADD_INVALID_ARGUMENT);
+    }
+    return $this;
+  }
+}
+
+abstract class Count64  {
+  public static function construct($value = 0) {
+    if (4 == PHP_INT_SIZE) {
+      return new Count64_32($value);
+    } else {
+      return new Count64_64($value);
+    }
+  }
 }
 
 abstract class ExtFileAttr {
