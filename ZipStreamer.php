@@ -323,7 +323,7 @@ class ZipStreamer {
                                                                   // zip64 end of central directory              4 bytes
         . $this->pack64le($zip64RecStart)                         // relative offset of the zip64 end of
                                                                   // central directory record                    8 bytes
-        . $this->pack32le(0);                                     // total number of disks                       4 bytes
+        . $this->pack32le(1);                                     // total number of disks                       4 bytes
   }
 
   private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
