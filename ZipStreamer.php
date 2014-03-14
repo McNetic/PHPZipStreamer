@@ -257,7 +257,8 @@ class ZipStreamer {
 
       flush();
     }
-    return array($dataLength, $gzLength, unpack('N', hash_final($hashCtx, true))[1]);
+    $crc = unpack('N', hash_final($hashCtx, true));
+    return array($dataLength, $gzLength, $crc[1]);
   }
 
   private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0) {
@@ -429,8 +430,9 @@ class ZipStreamer {
   private static function pack64le($data) {
   if (is_object($data)) {
     if ("Count64_32" == get_class($data)) {
-      $hiBytess = $data->_getValue()[0];
-      $loBytess = $data->_getValue()[1];
+      $value = $data->_getValue();
+      $hiBytess = $value[0];
+      $loBytess = $value[1];
     } else {
       $hiBytess = ($data->_getValue() & self::INT64_HIGH_MAP) >> 32;
       $loBytess = $data->_getValue() & self::INT64_LOW_MAP;
