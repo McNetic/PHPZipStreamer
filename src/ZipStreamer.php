@@ -29,7 +29,7 @@
  * @license GNU GPL
  * @version 0.4
  */
-
+include("lib/Count64.php");
 
 class ZipStreamer {
   const VERSION = "0.4";
@@ -45,9 +45,6 @@ class ZipStreamer {
   const ATTR_MADE_BY_VERSION = 0x032d; // made by version  (upper byte: UNIX, lower byte v4.5)
 
   const STREAM_CHUNK_SIZE = 1048576; // 1mb chunks
-
-  const INT64_HIGH_MAP = 0xffffffff00000000;
-  const INT64_LOW_MAP = 0x00000000ffffffff;
 
   private $extFileAttrFile;
   private $extFileAttrDir;
@@ -263,12 +260,12 @@ class ZipStreamer {
 
   private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0) {
     return ''
-      . $this->pack16le(0x0001)       // tag for this "extra" block type (ZIP64)        2 bytes (0x0001)
-      . $this->pack16le(28)           // size of this "extra" block                     2 bytes
-      . $this->pack64le($dataLength)    // original uncompressed file size                8 bytes
-      . $this->pack64le($gzLength)      // size of compressed data                        8 bytes
-      . $this->pack64le($this->offset)  // offset of local header record                  8 bytes
-      . $this->pack32le(0);             // number of the disk on which this file starts   4 bytes
+      . pack16le(0x0001)         // tag for this "extra" block type (ZIP64)        2 bytes (0x0001)
+      . pack16le(28)             // size of this "extra" block                     2 bytes
+      . pack64le($dataLength)    // original uncompressed file size                8 bytes
+      . pack64le($gzLength)      // size of compressed data                        8 bytes
+      . pack64le($this->offset)  // offset of local header record                  8 bytes
+      . pack32le(0);             // number of the disk on which this file starts   4 bytes
   }
 
   private function buildLocalFileHeader($filePath, $timestamp, $gpFlags = 0x0000,
@@ -277,41 +274,41 @@ class ZipStreamer {
     $zip64Ext = $this->buildZip64ExtendedInformationField($dataLength, $gzLength);
 
     return ''
-      . $this->pack32le(self::ZIP_LOCAL_FILE_HEADER)   // local file header signature     4 bytes  (0x04034b50)
-      . $this->pack16le(self::ATTR_VERSION_TO_EXTRACT) // version needed to extract       2 bytes
-      . $this->pack16le($gpFlags)                      // general purpose bit flag        2 bytes
-      . $this->pack16le($gzMethod)                     // compression method              2 bytes
-      . $this->pack32le($dosTime)                      // last mod file time              2 bytes
-                                                       // last mod file date              2 bytes
-      . $this->pack32le($dataCRC32)                    // crc-32                          4 bytes
-      . $this->pack32le(-1)                            // compressed size                 4 bytes
-      . $this->pack32le(-1)                            // uncompressed size               4 bytes
-      . $this->pack16le(strlen($filePath))             // file name length                2 bytes
-      . $this->pack16le(strlen($zip64Ext))             // extra field length              2 bytes
-      . $filePath                                      // file name                       (variable size)
-      . $zip64Ext;                                     // extra field                     (variable size)
+      . pack32le(self::ZIP_LOCAL_FILE_HEADER)   // local file header signature     4 bytes  (0x04034b50)
+      . pack16le(self::ATTR_VERSION_TO_EXTRACT) // version needed to extract       2 bytes
+      . pack16le($gpFlags)                      // general purpose bit flag        2 bytes
+      . pack16le($gzMethod)                     // compression method              2 bytes
+      . pack32le($dosTime)                      // last mod file time              2 bytes
+                                                // last mod file date              2 bytes
+      . pack32le($dataCRC32)                    // crc-32                          4 bytes
+      . pack32le(-1)                            // compressed size                 4 bytes
+      . pack32le(-1)                            // uncompressed size               4 bytes
+      . pack16le(strlen($filePath))             // file name length                2 bytes
+      . pack16le(strlen($zip64Ext))             // extra field length              2 bytes
+      . $filePath                               // file name                       (variable size)
+      . $zip64Ext;                              // extra field                     (variable size)
   }
 
   private function buildZip64EndOfCentralDirectoryRecord($cdRecLength) {
     $cdRecCount = sizeof($this->cdRec);
 
     return ''
-        . $this->pack32le(self::ZIP64_END_OF_CENTRAL_DIRECTORY) // zip64 end of central dir signature         4 bytes  (0x06064b50)
-        . $this->pack64le(44)                                   // size of zip64 end of central directory
-                                                                // record                                     8 bytes
-        . $this->pack16le(self::ATTR_MADE_BY_VERSION)           //version made by                             2 bytes
-        . $this->pack16le(self::ATTR_VERSION_TO_EXTRACT)        //version needed to extract                   2 bytes
-        . $this->pack32le(0)                                    // number of this disk                        4 bytes
-        . $this->pack32le(0)                                    // number of the disk with the start of the
-                                                                // central directory                          4 bytes
-        . $this->pack64le($cdRecCount)                          // total number of entries in the central
-                                                                // directory on this disk                     8 bytes
-        . $this->pack64le($cdRecCount)                          // total number of entries in the
-                                                                // central directory                          8 bytes
-        . $this->pack64le($cdRecLength)                         // size of the central directory              8 bytes
-        . $this->pack64le($this->offset)                        // offset of start of central directory
-                                                                // with respect to the starting disk number   8 bytes
-        . '';                                                   // zip64 extensible data sector               (variable size)
+        . pack32le(self::ZIP64_END_OF_CENTRAL_DIRECTORY) // zip64 end of central dir signature         4 bytes  (0x06064b50)
+        . pack64le(44)                                   // size of zip64 end of central directory
+                                                         // record                                     8 bytes
+        . pack16le(self::ATTR_MADE_BY_VERSION)           //version made by                             2 bytes
+        . pack16le(self::ATTR_VERSION_TO_EXTRACT)        //version needed to extract                   2 bytes
+        . pack32le(0)                                    // number of this disk                        4 bytes
+        . pack32le(0)                                    // number of the disk with the start of the
+                                                         // central directory                          4 bytes
+        . pack64le($cdRecCount)                          // total number of entries in the central
+                                                         // directory on this disk                     8 bytes
+        . pack64le($cdRecCount)                          // total number of entries in the
+                                                         // central directory                          8 bytes
+        . pack64le($cdRecLength)                         // size of the central directory              8 bytes
+        . pack64le($this->offset)                        // offset of start of central directory
+                                                         // with respect to the starting disk number   8 bytes
+        . '';                                            // zip64 extensible data sector               (variable size)
 
   }
 
@@ -319,12 +316,12 @@ class ZipStreamer {
     $zip64RecStart = Count64::construct($this->offset)->add($cdRecLength);
 
         return ''
-        . $this->pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
-        . $this->pack32le(0)                                      // number of the disk with the start of the
-                                                                  // zip64 end of central directory              4 bytes
-        . $this->pack64le($zip64RecStart)                         // relative offset of the zip64 end of
-                                                                  // central directory record                    8 bytes
-        . $this->pack32le(1);                                     // total number of disks                       4 bytes
+        . pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
+        . pack32le(0)                                      // number of the disk with the start of the
+                                                           // zip64 end of central directory              4 bytes
+        . pack64le($zip64RecStart)                         // relative offset of the zip64 end of
+                                                           // central directory record                    8 bytes
+        . pack32le(1);                                     // total number of disks                       4 bytes
   }
 
   private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
@@ -333,47 +330,47 @@ class ZipStreamer {
     $zip64Ext = $this->buildZip64ExtendedInformationField($dataLength, $gzLength);
 
     return ''
-      . $this->pack32le(self::ZIP_CENTRAL_FILE_HEADER)  //central file header signature   4 bytes  (0x02014b50)
-      . $this->pack16le(self::ATTR_MADE_BY_VERSION)     //version made by                 2 bytes
-      . $this->pack16le(self::ATTR_VERSION_TO_EXTRACT)  //version needed to extract       2 bytes
-      . $this->pack16le($gpFlags)                       //general purpose bit flag        2 bytes
-      . $this->pack16le($gzMethod)                      //compression method              2 bytes
-      . $this->pack32le($dosTime)                       //last mod file time              2 bytes
-                                                        //last mod file date              2 bytes
-      . $this->pack32le($dataCRC32)                     //crc-32                          4 bytes
-      . $this->pack32le(-1)                             //compressed size                 4 bytes
-      . $this->pack32le(-1)                             //uncompressed size               4 bytes
-      . $this->pack16le(strlen($filePath))              //file name length                2 bytes
-      . $this->pack16le(strlen($zip64Ext))              //extra field length              2 bytes
-      . $this->pack16le(0)                              //file comment length             2 bytes
-      . $this->pack16le(-1)                             //disk number start               2 bytes
-      . $this->pack16le(0)                              //internal file attributes        2 bytes
-      . $this->pack32le($extFileAttr)                   //external file attributes        4 bytes
-      . $this->pack32le(-1)                             //relative offset of local header 4 bytes
-      . $filePath                                       //file name                       (variable size)
-      . $zip64Ext                                       //extra field                     (variable size)
+      . pack32le(self::ZIP_CENTRAL_FILE_HEADER)  //central file header signature   4 bytes  (0x02014b50)
+      . pack16le(self::ATTR_MADE_BY_VERSION)     //version made by                 2 bytes
+      . pack16le(self::ATTR_VERSION_TO_EXTRACT)  //version needed to extract       2 bytes
+      . pack16le($gpFlags)                       //general purpose bit flag        2 bytes
+      . pack16le($gzMethod)                      //compression method              2 bytes
+      . pack32le($dosTime)                       //last mod file time              2 bytes
+                                                 //last mod file date              2 bytes
+      . pack32le($dataCRC32)                     //crc-32                          4 bytes
+      . pack32le(-1)                             //compressed size                 4 bytes
+      . pack32le(-1)                             //uncompressed size               4 bytes
+      . pack16le(strlen($filePath))              //file name length                2 bytes
+      . pack16le(strlen($zip64Ext))              //extra field length              2 bytes
+      . pack16le(0)                              //file comment length             2 bytes
+      . pack16le(-1)                             //disk number start               2 bytes
+      . pack16le(0)                              //internal file attributes        2 bytes
+      . pack32le($extFileAttr)                   //external file attributes        4 bytes
+      . pack32le(-1)                             //relative offset of local header 4 bytes
+      . $filePath                                //file name                       (variable size)
+      . $zip64Ext                                //extra field                     (variable size)
       //TODO: implement?
-      . '';                                             //file comment                    (variable size)
+      . '';                                      //file comment                    (variable size)
   }
 
   private function buildEndOfCentralDirectoryRecord() {
 
     return ''
-      . $this->pack32le(self::ZIP_END_OF_CENTRAL_DIRECTORY) // end of central dir signature    4 bytes  (0x06064b50)
-      . $this->pack16le(-1)                                 // number of this disk             2 bytes
-      . $this->pack16le(-1)                                 // number of the disk with the
-                                                            // start of the central directory  2 bytes
-      . $this->pack16le(-1)                                 // total number of entries in the
-                                                            // central directory on this disk  2 bytes
-      . $this->pack16le(-1)                                 // total number of entries in the
-                                                            // central directory               2 bytes
-      . $this->pack32le(-1)                                 // size of the central directory   4 bytes
-      . $this->pack32le(-1)                                 // offset of start of central
-                                                            // directory with respect to the
-                                                            // starting disk number            4 bytes
-      . $this->pack16le(0)                                  // .ZIP file comment length        2 bytes
+      . pack32le(self::ZIP_END_OF_CENTRAL_DIRECTORY) // end of central dir signature    4 bytes  (0x06064b50)
+      . pack16le(-1)                                 // number of this disk             2 bytes
+      . pack16le(-1)                                 // number of the disk with the
+                                                     // start of the central directory  2 bytes
+      . pack16le(-1)                                 // total number of entries in the
+                                                     // central directory on this disk  2 bytes
+      . pack16le(-1)                                 // total number of entries in the
+                                                     // central directory               2 bytes
+      . pack32le(-1)                                 // size of the central directory   4 bytes
+      . pack32le(-1)                                 // offset of start of central
+                                                     // directory with respect to the
+                                                     // starting disk number            4 bytes
+      . pack16le(0)                                  // .ZIP file comment length        2 bytes
       //TODO: implement?
-      . '';                                                 // .ZIP file comment               (variable size)
+      . '';                                          // .ZIP file comment               (variable size)
   }
 
   // Utility methods ////////////////////////////////////////////////////////
@@ -399,148 +396,6 @@ class ZipStreamer {
       | (($date['seconds'] >> 1) + ($date['minutes'] << 5) + ($date['hours'] << 11));
     }
     return 0x0000;
-  }
-
-  /**
-   * Pack 2 byte data into binary string, little endian format
-   *
-   * @param mixed $data data
-   * @return string 2 byte binary string
-   */
-  private static function pack16le($data) {
-    return pack('v', $data);
-  }
-
-  /**
-   * Pack 4 byte data into binary string, little endian format
-   *
-   * @param mixed $data data
-   * @return 4 byte binary string
-   */
-  private static function pack32le($data) {
-    return pack('V', $data);
-  }
-
-    /**
-   * Pack 8 byte data into binary string, little endian format
-   *
-   * @param mixed $data data
-   * @return string 8 byte binary string
-   */
-  private static function pack64le($data) {
-  if (is_object($data)) {
-    if ("Count64_32" == get_class($data)) {
-      $value = $data->_getValue();
-      $hiBytess = $value[0];
-      $loBytess = $value[1];
-    } else {
-      $hiBytess = ($data->_getValue() & self::INT64_HIGH_MAP) >> 32;
-      $loBytess = $data->_getValue() & self::INT64_LOW_MAP;
-    }
-  } else {
-    $hiBytess = ($data & self::INT64_HIGH_MAP) >> 32;
-    $loBytess = $data & self::INT64_LOW_MAP;
-  }
-  return pack('VV', $loBytess, $hiBytess);
-  }
-}
-
-abstract class Count64Base {
-  function __construct($value = 0) {
-    $this->set($value);
-  }
-  abstract public function set($value);
-  abstract public function add($value);
-  abstract public function _getValue();
-
-  const EXCEPTION_SET_INVALID_ARGUMENT = "Count64 object can only be set() to integer or Count64 values";
-  const EXCEPTION_ADD_INVALID_ARGUMENT = "Count64 object can only be add()ed integer or Count64 values";
-}
-
-class Count64_32 extends Count64Base{
-  private $loBytes;
-  private $hiBytes;
-
-  public function _getValue() {
-    return array($this->hiBytes, $this->loBytes);
-  }
-
-  public function set($value) {
-    if (is_int($value)) {
-      $this->loBytes = $value;
-      $this->hiBytes = 0;
-    } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $value = $value->_getValue();
-      $this->hiBytes = $value[0];
-      $this->loBytes = $value[1];
-    } else {
-      throw Exception(self::EXCEPTION_SET_INVALID_ARGUMENT);
-    }
-    return $this;
-  }
-
-  public function add($value) {
-    if (is_int($value)) {
-      $sum = (int)($this->loBytes + $value);
-      // overflow!
-      if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
-      || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
-        $this->hiBytes = (int)($this->hiBytes + 1);
-      }
-      $this->loBytes = $sum;
-    } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $value = $value->_getValue();
-      $sum = (int)($this->loBytes + $value[1]);
-      if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
-      || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
-        $this->hiBytes = (int)($this->hiBytes + 1);
-      }
-      $this->loBytes = $sum;
-      $this->hiBytes = (int)($this->hiBytes + $value[0]);
-    } else {
-      throw Exception(self::EXCEPTION_ADD_INVALID_ARGUMENT);
-    }
-    return $this;
-  }
-}
-
-class Count64_64 extends Count64Base {
-  private $value;
-
-  public function _getValue() {
-    return $this->value;
-  }
-
-  public function set($value) {
-    if (is_int($value)) {
-      $this->value = $value;
-    } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $this->value = $value->_getValue();
-    } else {
-      throw Exception(self::EXCEPTION_SET_INVALID_ARGUMENT);
-    }
-    return $this;
-  }
-
-  public function add($value) {
-    if (is_int($value)) {
-      $this->value = (int)($this->value + $value);
-    } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $this->value = (int)($this->value + $value->_getValue());
-    } else {
-      throw Exception(self::EXCEPTION_ADD_INVALID_ARGUMENT);
-    }
-    return $this;
-  }
-}
-
-abstract class Count64  {
-  public static function construct($value = 0) {
-    if (4 == PHP_INT_SIZE) {
-      return new Count64_32($value);
-    } else {
-      return new Count64_64($value);
-    }
   }
 }
 
