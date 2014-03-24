@@ -20,6 +20,8 @@
  * @copyright Copyright (C) 2013-2014 Nicolai Ehemann and contributors
  * @license GNU GPL
  */
+namespace ZipStreamer;
+
 const INT64_HIGH_MAP = 0xffffffff00000000;
 const INT64_LOW_MAP =  0x00000000ffffffff;
 

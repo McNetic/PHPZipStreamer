@@ -29,6 +29,8 @@
  * @license GNU GPL
  * @version 0.4
  */
+namespace ZipStreamer;
+
 include("lib/Count64.php");
 
 class ZipStreamer {
