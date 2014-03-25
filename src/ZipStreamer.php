@@ -51,6 +51,8 @@ class ZipStreamer {
   private $extFileAttrFile;
   private $extFileAttrDir;
 
+  /** @var stream output stream zip file is written to */
+  private $outStream;
   /** @var array central directory record */
   private $cdRec = array();
   /** @var int offset of next file to be added */
@@ -61,7 +63,20 @@ class ZipStreamer {
   /**
    * Constructor.
    */
-  function __construct() {
+  function __construct($options = NULL) {
+    $defaultOptions = array(
+        'outstream' => NULL,
+    );
+    if (is_null($options)) {
+      $options = array();
+    }
+    $options = array_merge($defaultOptions, $options);
+
+    if ($options['outstream']) {
+      $this->outstream = $options['outstream'];
+    } else {
+      $this->outstream = fopen('php://stdout', 'w');
+    }
     //TODO: is this advisable/necessary?
     if (ini_get('zlib.output_compression')) {
       ini_set('zlib.output_compression', 'Off');
@@ -112,7 +127,7 @@ class ZipStreamer {
         header('Content-Transfer-Encoding: binary');
       }
     }
-    flush();
+    $this->flush();
     // turn off output buffering
     ob_end_flush();
   }
@@ -201,18 +216,18 @@ class ZipStreamer {
 
       // print central directory
       $cd = implode('', $this->cdRec);
-      echo $cd;
+      $this->write($cd);
 
       // print the zip64 end of central directory record
-      echo $this->buildZip64EndOfCentralDirectoryRecord(strlen($cd));
+      $this->write($this->buildZip64EndOfCentralDirectoryRecord(strlen($cd)));
 
       // print the zip64 end of central directory locator
-      echo $this->buildZip64EndOfCentralDirectoryLocator(strlen($cd));
+      $this->write($this->buildZip64EndOfCentralDirectoryLocator(strlen($cd)));
 
       // print end of central directory record
-      echo $this->buildEndOfCentralDirectoryRecord();
+      $this->write($this->buildEndOfCentralDirectoryRecord());
 
-      flush();
+      $this->flush();
 
       $this->isFinalized = true;
       $cd = null;
@@ -221,6 +236,14 @@ class ZipStreamer {
       return true;
     }
     return false;
+  }
+
+  private function write($data) {
+    return fwrite($this->outstream, $data);
+  }
+
+  private function flush() {
+    return fflush($this->outstream);
   }
 
   private function beginFile($filePath, $fileComment, $timestamp, $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE,
@@ -237,7 +260,7 @@ class ZipStreamer {
     $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength,
         $gzLength, $dataCRC32);
 
-    echo $localFileHeader;
+    $this->write($localFileHeader);
 
     return array($gpFlags, strlen($localFileHeader));
   }
@@ -256,9 +279,9 @@ class ZipStreamer {
         $data = gzdeflate($data);
       }
       $gzLength->add(strlen($data));
-      echo $data;
+      $this->write($data);
 
-      flush();
+      $this->flush();
     }
     $crc = unpack('N', hash_final($hashCtx, true));
     return array($dataLength, $gzLength, $crc[1]);
