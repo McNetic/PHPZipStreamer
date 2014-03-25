@@ -34,7 +34,7 @@ namespace ZipStreamer;
 include("lib/Count64.php");
 
 class ZipStreamer {
-  const VERSION = "0.4";
+  const VERSION = "0.5";
 
   const ZIP_LOCAL_FILE_HEADER = 0x04034b50; // local file header signature
   const ZIP_CENTRAL_FILE_HEADER = 0x02014b50; // central file header signature
@@ -60,41 +60,11 @@ class ZipStreamer {
 
   /**
    * Constructor.
-   *
-   * @param bool   $sendHeaders Send suitable headers to the HTTP client (assumes nothing was sent yet)
-   * @param string $archiveName Name to send to the HTTP client. Optional, defaults to "archive.zip".
-   * @param string $contentType Content mime type. Optional, defaults to "application/zip".
    */
-  function __construct($sendHeaders = false, $archiveName = 'archive.zip', $contentType = 'application/zip') {
+  function __construct() {
     //TODO: is this advisable/necessary?
     if (ini_get('zlib.output_compression')) {
       ini_set('zlib.output_compression', 'Off');
-    }
-    if ($sendHeaders) {
-      $headerFile = null;
-      $headerLine = null;
-      if (!headers_sent($headerFile, $headerLine)
-            or die('<p><strong>Error:</strong> Unable to send file ' .
-                   '$archiveName. HTML Headers have already been sent from ' .
-                   '<strong>$headerFile</strong> in line <strong>$headerLine' .
-                   '</strong></p>')) {
-        if ((ob_get_contents() === false || ob_get_contents() == '')
-             or die('\n<p><strong>Error:</strong> Unable to send file ' .
-                    '<strong>$archiveName.epub</strong>. Output buffer ' .
-                    'already contains text (typically warnings or errors).</p>')) {
-          header('Pragma: public');
-          header('Last-Modified: ' . gmdate('D, d M Y H:i:s T'));
-          header('Expires: 0');
-          header('Accept-Ranges: bytes');
-          header('Connection: Keep-Alive');
-          header('Content-Type: ' . $contentType);
-          header('Content-Disposition: attachment; filename="' . $archiveName . '";');
-          header('Content-Transfer-Encoding: binary');
-        }
-      }
-      flush();
-      // turn off output buffering
-      ob_end_flush();
     }
     // initialize default external file attributes
     $this->extFileAttrFile = UNIX::getExtFileAttr(UNIX::S_IFREG |
@@ -111,6 +81,40 @@ class ZipStreamer {
     $this->isFinalized = true;
     $this->cdRec = null;
     exit;
+  }
+
+  /**
+  * Send appropriate http headers before streaming the zip file and disable output buffering.
+  * This method, if used, has to be called before adding anything to the zip file.
+  *
+  * @param string $archiveName Filename of archive to be created (optional, default 'archive.zip')
+  * @param string $contentType Content mime type to be set (optional, default 'application/zip')
+  */
+  public function sendHeaders($archiveName = 'archive.zip', $contentType = 'application/zip') {
+    $headerFile = null;
+    $headerLine = null;
+    if (!headers_sent($headerFile, $headerLine)
+          or die('<p><strong>Error:</strong> Unable to send file ' .
+                 '$archiveName. HTML Headers have already been sent from ' .
+                 '<strong>$headerFile</strong> in line <strong>$headerLine' .
+                 '</strong></p>')) {
+      if ((ob_get_contents() === false || ob_get_contents() == '')
+           or die('\n<p><strong>Error:</strong> Unable to send file ' .
+                  '<strong>$archiveName.epub</strong>. Output buffer ' .
+                  'already contains text (typically warnings or errors).</p>')) {
+        header('Pragma: public');
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s T'));
+        header('Expires: 0');
+        header('Accept-Ranges: bytes');
+        header('Connection: Keep-Alive');
+        header('Content-Type: ' . $contentType);
+        header('Content-Disposition: attachment; filename="' . $archiveName . '";');
+        header('Content-Transfer-Encoding: binary');
+      }
+    }
+    flush();
+    // turn off output buffering
+    ob_end_flush();
   }
 
   /**
