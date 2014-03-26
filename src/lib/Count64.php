@@ -93,6 +93,9 @@ class Count64_32 extends Count64Base{
     if (is_int($value)) {
       $this->loBytes = $value;
       $this->hiBytes = 0;
+    } else if (is_array($value) && 2 == sizeof($value)) {
+      $this->loBytes = $value[0];
+      $this->hiBytes = $value[1];
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $value = $value->_getValue();
       $this->hiBytes = $value[0];
@@ -138,6 +141,10 @@ class Count64_64 extends Count64Base {
   public function set($value) {
     if (is_int($value)) {
       $this->value = $value;
+    } else if (is_array($value) && 2 == sizeof($value)) {
+      $this->value = $value[1];
+      $this->value = $this->value << 32;
+      $this->value = $this->value + $value[0];
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $this->value = $value->_getValue();
     } else {
