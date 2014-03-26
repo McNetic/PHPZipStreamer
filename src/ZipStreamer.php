@@ -31,7 +31,7 @@
  */
 namespace ZipStreamer;
 
-include("lib/Count64.php");
+require "lib/Count64.php";
 
 class ZipStreamer {
   const VERSION = "0.5";
