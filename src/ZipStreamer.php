@@ -95,7 +95,6 @@ class ZipStreamer {
   function __destruct() {
     $this->isFinalized = true;
     $this->cdRec = null;
-    exit;
   }
 
   /**
