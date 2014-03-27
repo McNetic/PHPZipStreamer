@@ -101,7 +101,7 @@ class Count64_32 extends Count64Base{
       $this->hiBytes = $value[0];
       $this->loBytes = $value[1];
     } else {
-      throw Exception(self::EXCEPTION_SET_INVALID_ARGUMENT);
+      throw new \InvalidArgumentException(self::EXCEPTION_SET_INVALID_ARGUMENT);
     }
     return $this;
   }
@@ -125,7 +125,7 @@ class Count64_32 extends Count64Base{
       $this->loBytes = $sum;
       $this->hiBytes = (int)($this->hiBytes + $value[0]);
     } else {
-      throw Exception(self::EXCEPTION_ADD_INVALID_ARGUMENT);
+      throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
     }
     return $this;
   }
@@ -148,7 +148,7 @@ class Count64_64 extends Count64Base {
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $this->value = $value->_getValue();
     } else {
-      throw Exception(self::EXCEPTION_SET_INVALID_ARGUMENT);
+      throw new \InvalidArgumentException(self::EXCEPTION_SET_INVALID_ARGUMENT);
     }
     return $this;
   }
@@ -159,7 +159,7 @@ class Count64_64 extends Count64Base {
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $this->value = (int)($this->value + $value->_getValue());
     } else {
-      throw Exception(self::EXCEPTION_ADD_INVALID_ARGUMENT);
+      throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
     }
     return $this;
   }
