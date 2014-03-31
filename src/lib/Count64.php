@@ -26,6 +26,18 @@ const INT64_HIGH_MAP = 0xffffffff00000000;
 const INT64_LOW_MAP =  0x00000000ffffffff;
 
 /**
+* Unsigned right shift
+* @param int $bits integer to be shifted
+* @param int $shift number of bits to be shifted
+* @return int shifted integer
+*/
+function urShift($bits, $shift) {
+  if($shift == 0) {
+    return $bits;
+  }
+  return ($bits >> $shift) & ~(1 << (8 * PHP_INT_SIZE - 1) >> ($shift - 1));
+}
+/**
  * Pack 2 byte data into binary string, little endian format
  *
  * @param mixed $data data
@@ -75,6 +87,8 @@ abstract class Count64Base {
   }
   abstract public function set($value);
   abstract public function add($value);
+  abstract public function getHiBytes();
+  abstract public function getLoBytes();
   abstract public function _getValue();
 
   const EXCEPTION_SET_INVALID_ARGUMENT = "Count64 object can only be set() to integer or Count64 values";
@@ -84,6 +98,14 @@ abstract class Count64Base {
 class Count64_32 extends Count64Base{
   private $loBytes;
   private $hiBytes;
+
+  public function getHiBytes() {
+    return $this->hiBytes;
+  }
+
+  public function getLoBytes() {
+    return $this->loBytes;
+  }
 
   public function _getValue() {
     return array($this->hiBytes, $this->loBytes);
@@ -133,6 +155,14 @@ class Count64_32 extends Count64Base{
 
 class Count64_64 extends Count64Base {
   private $value;
+
+  public function getHiBytes() {
+    return urShift($this->value, 32);
+  }
+
+  public function getLoBytes() {
+    return $this->value & INT64_LOW_MAP; 
+  }
 
   public function _getValue() {
     return $this->value;
