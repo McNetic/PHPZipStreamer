@@ -108,14 +108,14 @@ class ZipStreamer {
     $headerFile = null;
     $headerLine = null;
     if (!headers_sent($headerFile, $headerLine)
-          or die('<p><strong>Error:</strong> Unable to send file ' .
-                 '$archiveName. HTML Headers have already been sent from ' .
-                 '<strong>$headerFile</strong> in line <strong>$headerLine' .
-                 '</strong></p>')) {
+          or die("<p><strong>Error:</strong> Unable to send file " .
+                 "$archiveName. HTML Headers have already been sent from " .
+                 "<strong>$headerFile</strong> in line <strong>$headerLine" .
+                 "</strong></p>")) {
       if ((ob_get_contents() === false || ob_get_contents() == '')
-           or die('\n<p><strong>Error:</strong> Unable to send file ' .
-                  '<strong>$archiveName.epub</strong>. Output buffer ' .
-                  'already contains text (typically warnings or errors).</p>')) {
+           or die("\n<p><strong>Error:</strong> Unable to send file " .
+                  "<strong>$archiveName.epub</strong>. Output buffer " .
+                  "already contains text (typically warnings or errors).</p>")) {
         header('Pragma: public');
         header('Last-Modified: ' . gmdate('D, d M Y H:i:s T'));
         header('Expires: 0');
@@ -128,7 +128,7 @@ class ZipStreamer {
     }
     $this->flush();
     // turn off output buffering
-    ob_end_flush();
+    @ob_end_flush();
   }
 
   /**
