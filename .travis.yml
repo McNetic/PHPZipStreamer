@@ -7,3 +7,6 @@ php:
 before_script: phpenv config-add test/phpconfig.ini
 script: phpunit --configuration test/phpunit.xml
 
+matrix:
+  fast_finish: true
+
