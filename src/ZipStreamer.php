@@ -75,7 +75,7 @@ class ZipStreamer {
     if ($options['outstream']) {
       $this->outstream = $options['outstream'];
     } else {
-      $this->outstream = fopen('php://stdout', 'w');
+      $this->outstream = fopen('php://output', 'w');
     }
     //TODO: is this advisable/necessary?
     if (ini_get('zlib.output_compression')) {
