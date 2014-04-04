@@ -61,7 +61,10 @@ class ZipStreamer {
   private $isFinalized = false;
 
   /**
-   * Constructor.
+   * Constructor. Initializes ZipStreamer object for immediate usage.
+   * @param array $options Optional, ZipStreamer and zip file options as key/value pairs.
+   *                       Valid options are:
+   *                       * outstream: stream the zip file is output to (default: stdout) 
    */
   function __construct($options = NULL) {
     $defaultOptions = array(
@@ -207,7 +210,8 @@ class ZipStreamer {
 
   /**
    * Close the archive.
-   * A closed archive can no longer have new files added to it.
+   * A closed archive can no longer have new files added to it. After 
+   * closing, the zip file is completely written to the output stream.
    * @return bool $success
    */
   public function finalize() {
