@@ -1,0 +1,26 @@
+{
+  "name": "mcnetic/zipstreamer",
+  "type": "library",
+  "description": "Stream zip files without i/o overhead",
+  "keywords": ["zip", "stream"],
+  "homepage": "https://github.com/McNetic/PHPZipStreamer",
+  "license": "GPL",
+  "authors": [ {
+      "name": "Nicolai Ehemann",
+      "email": "en@enlightened.de",
+      "role": "Author/Maintainer"
+    },{
+      "name": "André Rothe",
+      "email": "arothe@zks.uni-leipzig.de",
+     "role": "Contributor"
+   }
+  ],
+  "repositories": [ {
+      "type": "vcs",
+      "url": "https://github.com/McNetic/PHPZipStreamer"
+    }
+  ],                                                
+  "require": {
+    "php": ">=5.3.0"
+  }
+}
