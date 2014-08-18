@@ -1,6 +1,7 @@
 <?php
 
 /**
+* Copyright (C) 2014-2015 Nicolai Ehemann <en@enlightened.de>
  * Copyright (C) 2014 Nicolai Ehemann <en@enlightened.de>
  *
  * This file is licensed under the GNU GPL version 3 or later.

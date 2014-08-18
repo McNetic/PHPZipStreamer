@@ -26,13 +26,13 @@ $zip = new ZipStreamer\ZipStreamer();
 $stream = fopen('inputfile.txt','r');
 
 # add the file to the zip stream (output is sent immediately)
-$zip->addFileFromStream($stream, 'test1.txt', 1);
+$zip->addFileFromStream($stream, 'test1.txt');
 
 # close the stream if you opened it yourself
 fclose($stream);
 
 # add an empty directory to the zip file (also sent immediately)
-$zip->addEmptyDir("testdirectory", 1);
+$zip->addEmptyDir("testdirectory");
 
 # finalize zip file. Nothing can be added any more. 
 $zip->finalize();
@@ -42,21 +42,22 @@ $zip->finalize();
 Characteristics
 ---------------
 
-* ZipStreamer causes no disk i/o (aside from the input streams, if they are
-created from disk), has very low cpu usage and a low memory footprint, as
-the streams are read in small chunks and immediately written to output
-* ZipStreamer by default uses the Zip64 extension. Some (mostly older) zip 
-tools can not handle that, therefore it can be disabled (see below)
-* With the Zip64 extension, ZipStreamer can handle output zip files larger
-than 2/4 GB on both 32bit and 64bit machines
-* With the Zip64 extension, ZipStreamer can handle input streams larger then
-2/4 GB on both 32bit and 64bit machines. On 32bit machines, that usually means
-that the LFS has to be enabled (but if the stream source is not the
-filesystem, that may not even be necessary)
-* ZipStreamer will not compress the content, currently (PHP appears not to
-have a stream deflate feature). That means that the output zip file will be of
-the same size (plus a few bytes) as the input files. If you know of a way to
-stream deflate in php, please contact us on github.
+* **Performance:** ZipStreamer causes no disk i/o (aside from the input
+streams, if they are created from disk), has low cpu usage (especially when
+not compressing) and a low memory footprint, as the streams are read in small
+* **Compatibility issues:** ZipStreamer by default uses the Zip64 extension. Some (mostly older) zip 
+tools and Mac OS X can not handle that, therefore it can be disabled (see below)
+* **Large output files:** With the Zip64 extension, ZipStreamer can handle
+output zip files larger than 2/4 GB on both 32bit and 64bit machines
+* **Large input files:** With the Zip64 extension, ZipStreamer can handle
+input streams larger then 2/4 GB on both 32bit and 64bit machines. On 32bit
+machines, that usually means that the LFS has to be enabled (but if the stream
+source is not the filesystem, that may not even be necessary)
+* **Compression:** ZipStreamer will not compress the content by default. That
+means that the output zip file will be of the same size (plus a few bytes) as
+the input files. However, if the pecl_http extension is available, deflate
+(the zip standard) compression can be enabled and/or disabled globally and
+per file
 
 API Documentation
 -----------------
@@ -68,15 +69,20 @@ This is the documentation of the public API of ZipStreamer.
 
 #####Methods
 ```
-__construct( $options)
+__construct(array $options)
 ```
 
 Constructor. Initializes ZipStreamer object for immediate usage.
 
 Valid options for ZipStreamer are:
 
-* outstream: stream the zip file is output to (default: stdout)
+* stream *outstream*: the zip file is output to (default: stdout)
+* int *compress*: compression method (one of *COMPR::STORE*,
+*COMPR::DEFLATE*, default *COMPR::STORE*) can be overridden for single files
+* int *level*: compression level (one of *COMPR::NORMAL*, *COMPR::MAXIMUM*,
+*COMPR::SUPERFAST*, default *COMPR::NORMAL*) can be overridden for single files
 * zip64:     boolean indicating use of Zip64 extension (default: True)
+
 
 ######Parameters
  * array *$options* Optional, ZipStreamer and zip file options as key/value pairs.
@@ -94,7 +100,7 @@ This method, if used, has to be called before adding anything to the zip file.
 * string *$contentType* Content mime type to be set (optional, default 'application/zip')
 
 ```
-addFileFromStream(string $stream, string $filePath, int $timestamp, string $fileComment, bool $compress) : bool
+addFileFromStream(string $stream, string $filePath, array $options) : bool
 ```
 
 Add a file to the archive at the specified location and file name.
@@ -102,23 +108,27 @@ Add a file to the archive at the specified location and file name.
 ######Parameters
 * string *$stream* Stream to read data from
 * string *$filePath* Filepath and name to be used in the archive.
-* int    *$timestamp* (Optional) Timestamp for the added file, if omitted or set to 0, the current time will be used.
-* string *$fileComment* (Optional) Comment to be added to the archive for this file. To use fileComment, timestamp must be given.
-* bool   *$compress* (Optional) Compress file, if set to false the file will only be stored. Default FALSE.
+* array *options* (optional) additional options. Valid options are:
+    * int *$timestamp* Timestamp for the file (default: current time)
+    * string *$comment* comment to be added for this file (default: none)
+    * int *compress*: compression method (override global option for this
+    file)
+    * int *level*: compression level (override global option for this file)
 
 ######Returns
 bool Success
 
 ```
-addEmptyDir(string $directoryPath, int $timestamp, string $fileComment) : bool
+addEmptyDir(string $directoryPath, array $options) : bool
 ```
 
 Add an empty directory entry to the zip archive.
 
 ######Parameters
 * string *$directoryPath* Directory Path and name to be added to the archive.
-* int     $timestamp* (Optional) Timestamp for the added directory, if omitted or set to 0, the current time will be used.
-* string  $fileComment* (Optional) Comment to be added to the archive for this directory. To use fileComment, timestamp must be given.
+* array *options* (optional) additional options. Valid options are:
+    * int *$timestamp* Timestamp for the dir (default: current time)
+    * string *$comment* comment to be added for the dir (default: none)
 
 ######Returns
 bool Success

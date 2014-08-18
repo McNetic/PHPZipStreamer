@@ -25,16 +25,27 @@
  *
  * @author Nicolai Ehemann <en@enlightened.de>
  * @author André Rothe <arothe@zks.uni-leipzig.de>
- * @copyright Copyright (C) 2013-2014 Nicolai Ehemann and contributors
+ * @copyright Copyright (C) 2013-2015 Nicolai Ehemann and contributors
  * @license GNU GPL
- * @version 0.6
+ * @version 0.7
  */
 namespace ZipStreamer;
 
 require "lib/Count64.php";
 
+class COMPR {
+  // compression method
+  const STORE = 0x0000; //  0 - The file is stored (no compression)
+  const DEFLATE = 0x0008; //  8 - The file is deflated
+
+  // compression level (for deflate compression)
+  const NORMAL = 0;
+  const MAXIMUM = 1;
+  const SUPERFAST = 2;
+}
+
 class ZipStreamer {
-  const VERSION = "0.6";
+  const VERSION = "0.7";
 
   const ZIP_LOCAL_FILE_HEADER = 0x04034b50; // local file header signature
   const ZIP_CENTRAL_FILE_HEADER = 0x02014b50; // central file header signature
@@ -53,6 +64,11 @@ class ZipStreamer {
   private $outStream;
   /** @var boolean zip64 enabled */
   private $zip64 = True;
+  /** @var int compression method */
+  private $compress;
+  /** @var int compression level */
+  private $level;
+
   /** @var array central directory record */
   private $cdRec = array();
   /** @var int offset of next file to be added */
@@ -66,11 +82,18 @@ class ZipStreamer {
    *                       Valid options are:
    *                       * outstream: stream the zip file is output to (default: stdout)
    *                       * zip64: enabled/disable zip64 support (default: True)
+   *                       * compress: int, compression method (one of COMPR::STORE,
+   *                                   COMPR::DEFLATE, default COMPR::STORE)
+   *                                   can be overridden for single files
+   *                       * level: int, compression level (one of COMPR::NORMAL,
+   *                                COMPR::MAXIMUM, COMPR::SUPERFAST, default COMPR::NORMAL)
    */
   function __construct($options = NULL) {
     $defaultOptions = array(
         'outstream' => NULL,
         'zip64' => True,
+        'compress' => COMPR::STORE,
+        'level' => COMPR::NORMAL,
     );
     if (is_null($options)) {
       $options = array();
@@ -83,7 +106,9 @@ class ZipStreamer {
       $this->outstream = fopen('php://output', 'w');
     }
     $this->zip64 = $options['zip64'];
-
+    $this->compress = $options['compress'];
+    $this->level = $options['level'];
+    $this->validateCompressionOptions($this->compress, $this->level);
     //TODO: is this advisable/necessary?
     if (ini_get('zlib.output_compression')) {
       ini_set('zlib.output_compression', 'Off');
@@ -154,15 +179,29 @@ class ZipStreamer {
    *
    * @param string $stream      Stream to read data from
    * @param string $filePath    Filepath and name to be used in the archive.
-   * @param int    $timestamp   (Optional) Timestamp for the added file, if omitted or set to 0, the current time will be used.
-   * @param string $fileComment (Optional) Comment to be added to the archive for this file. To use fileComment, timestamp must be given.
-   * @param bool   $compress    (Optional) Compress file, if set to false the file will only be stored. Default FALSE.
+   * @param array $options      Optional, additional options
+   *                            Valid options are:
+   *                               * int timestamp: timestamp for the file (default: current time)
+   *                               * string comment: comment to be added for this file (default: none)
+   *                               * int compress: compression method (override global option for this file)
+   *                               * int level: compression level (override global option for this file)
    * @return bool $success
    */
-  public function addFileFromStream($stream, $filePath, $timestamp = 0, $fileComment = null, $compress = false) {
+  public function addFileFromStream($stream, $filePath, $options = NULL) {
     if ($this->isFinalized) {
       return false;
     }
+    $defaultOptions = array(
+        'timestamp' => NULL,
+        'comment' => NULL,
+        'compress' => $this->compress,
+        'level' => $this->level,
+    );
+    if (is_null($options)) {
+    	$options = array();
+    }
+    $options = array_merge($defaultOptions, $options);
+    $this->validateCompressionOptions($options['compress'], $options['level']);
 
     if (!is_resource($stream) || get_resource_type($stream) != 'stream') {
       return false;
@@ -171,19 +210,14 @@ class ZipStreamer {
     $filePath = self::normalizeFilePath($filePath);
 
     $gpFlags = GPFLAGS::ADD;
-    if ($compress) {
-      $gzMethod = GZMETHOD::DEFLATE;
-    } else {
-      $gzMethod = GZMETHOD::STORE;
-    }
 
-    list($gpFlags, $lfhLength) = $this->beginFile($filePath, False, $fileComment, $timestamp, $gpFlags, $gzMethod);
-    list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
+    list($gpFlags, $lfhLength) = $this->beginFile($filePath, False, $options['comment'], $options['timestamp'], $gpFlags, $options['compress']);
+    list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $options['compress'], $options['level']);
 
     $ddLength = $this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
 
     // build cdRec
-    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod,
+    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $options['timestamp'], $gpFlags, $options['compress'],
         $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile, False);
 
     // calc offset
@@ -196,25 +230,34 @@ class ZipStreamer {
    * Add an empty directory entry to the zip archive.
    *
    * @param string $directoryPath  Directory Path and name to be added to the archive.
-   * @param int    $timestamp      (Optional) Timestamp for the added directory, if omitted or set to 0, the current time will be used.
-   * @param string $fileComment    (Optional) Comment to be added to the archive for this directory. To use fileComment, timestamp must be given.
+   * @param array $options      Optional, additional options
+   *                            Valid options are:
+   *                               * int timestamp: timestamp for the file (default: current time)
+   *                               * string comment: comment to be added for this file (default: none)
    * @return bool $success
    */
-  public function addEmptyDir($directoryPath, $timestamp = 0, $fileComment = null) {
+  public function addEmptyDir($directoryPath, $options = NULL) {
     if ($this->isFinalized) {
       return false;
     }
+    $defaultOptions = array(
+    		'timestamp' => NULL,
+    		'comment' => NULL,
+    );
+    if (is_null($options)) {
+    	$options = array();
+    }
+    $options = array_merge($defaultOptions, $options);
 
     $directoryPath = self::normalizeFilePath($directoryPath) . '/';
 
     if (strlen($directoryPath) > 0) {
-      $gpFlags = 0x0000; // Compression type 0 = stored
-      $gzMethod = GZMETHOD::STORE; // Compression type 0 = stored
+      $gpFlags = 0x0000;
+      $gzMethod = COMPR::STORE; // Compression type 0 = stored
 
-      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, True, $fileComment, $timestamp, $gpFlags, $gzMethod);
-
+      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, True, $options['comment'], $options['timestamp'], $gpFlags, $gzMethod);
       // build cdRec
-      $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod,
+      $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $options['timestamp'], $gpFlags, $gzMethod,
           Count64::construct(0, !$this->zip64), Count64::construct(0, !$this->zip64), 0, $this->extFileAttrDir, True);
 
       // calc offset
@@ -260,6 +303,24 @@ class ZipStreamer {
     return false;
   }
 
+  private function validateCompressionOptions($compress, $level) {
+    if (COMPR::STORE === $compress) {
+    } else if (COMPR::DEFLATE === $compress) {
+      if (!class_exists('\HttpDeflateStream')) {
+      	throw new \Exception('unable to use compression method DEFLATE (requires pecl_http)');
+      }
+    } else {
+      throw new \Exception('invalid option ' . $compress . ' (compression method)');
+    }
+
+    if (COMPR::NORMAL === $level ||
+        COMPR::MAXIMUM === $level ||
+        COMPR::SUPERFAST === $level) {
+    } else {
+      throw new \Exception('invalid option ' . $level . ' (compression level');
+    }
+  }
+
   private function write($data) {
     return fwrite($this->outstream, $data);
   }
@@ -268,7 +329,7 @@ class ZipStreamer {
     return fflush($this->outstream);
   }
 
-  private function beginFile($filePath, $isDir, $fileComment, $timestamp, $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE,
+  private function beginFile($filePath, $isDir, $fileComment, $timestamp, $gpFlags, $gzMethod,
       $dataLength = 0, $gzLength = 0, $dataCRC32 = 0) {
 
     $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
@@ -287,19 +348,40 @@ class ZipStreamer {
     return array($gpFlags, strlen($localFileHeader));
   }
 
-  private function streamFileData($stream, $compress) {
+  private function streamFileData($stream, $compress, $level) {
     $dataLength = Count64::construct(0, !$this->zip64);
     $gzLength = Count64::construct(0, !$this->zip64);
     $hashCtx = hash_init('crc32b');
+    if (COMPR::DEFLATE === $compress) {
+      $deflateFlags = \HttpDeflateStream::TYPE_RAW;
+      switch ($level) {
+        case COMPR::NORMAL:
+          $deflateFlags |= \HttpDeflateStream::LEVEL_DEF;
+          break;
+        case COMPR::MAXIMUM:
+          $deflateFlags |= \HttpDeflateStream::LEVEL_MAX;
+          break;
+        case COMPR::SUPERFAST:
+          $deflateFlags |= \HttpDeflateStream::LEVEL_MIN;
+          break;
+      }
+      $compStream = new \HttpDeflateStream($deflateFlags);
+    }
 
     while (!feof($stream)) {
       $data = fread($stream, self::STREAM_CHUNK_SIZE);
       $dataLength->add(strlen($data));
       hash_update($hashCtx, $data);
-      if ($compress) {
-        //TODO: this is broken.
-        $data = gzdeflate($data);
+      if (COMPR::DEFLATE === $compress) {
+        $data = $compStream->update($data);
       }
+      $gzLength->add(strlen($data));
+      $this->write($data);
+
+      $this->flush();
+    }
+    if (COMPR::DEFLATE === $compress) {
+      $data = $compStream->finish();
       $gzLength->add(strlen($data));
       $this->write($data);
 
@@ -319,8 +401,8 @@ class ZipStreamer {
       . pack32le(0);             // number of the disk on which this file starts   4 bytes
   }
 
-  private function buildLocalFileHeader($filePath, $timestamp, $gpFlags = 0x0000,
-      $gzMethod = GZMETHOD::STORE, $dataLength, $gzLength, $isDir = False, $dataCRC32 = 0) {
+  private function buildLocalFileHeader($filePath, $timestamp, $gpFlags,
+      $gzMethod, $dataLength, $gzLength, $isDir = False, $dataCRC32 = 0) {
     $versionToExtract = $this->getVersionToExtract($isDir);
     $dosTime = self::getDosTime($timestamp);
     if ($this->zip64) {
@@ -562,12 +644,15 @@ class DOS extends ExtFileAttr {
 
 class GPFLAGS {
   const NONE = 0x0000; // no flags set
+  const COMP1 = 0x0002; // compression flag 1 (compression settings, see APPNOTE for details)
+  const COMP2 = 0x0004; // compression flag 2 (compression settings, see APPNOTE for details)
   const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
   const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
-}
 
-class GZMETHOD {
-  const STORE = 0x0000; //  0 - The file is stored (no compression)
-  const DEFLATE = 0x0008; //  8 - The file is Deflated
+  // compression settings for deflate/deflate64
+  const DEFL_NORM = 0x0000; // normal compression (COMP1 and COMP2 not set)
+  const DEFL_MAX = COMP1; // maximum compression
+  const DEFL_FAST = COMP2; // fast compression
+  const DEFL_SFAST = 0x0006; // superfast compression (COMP1 and COMP2 set)
 }
 
