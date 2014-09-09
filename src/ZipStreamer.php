@@ -64,7 +64,7 @@ class ZipStreamer {
    * Constructor. Initializes ZipStreamer object for immediate usage.
    * @param array $options Optional, ZipStreamer and zip file options as key/value pairs.
    *                       Valid options are:
-   *                       * outstream: stream the zip file is output to (default: stdout) 
+   *                       * outstream: stream the zip file is output to (default: stdout)
    */
   function __construct($options = NULL) {
     $defaultOptions = array(
@@ -210,7 +210,7 @@ class ZipStreamer {
 
   /**
    * Close the archive.
-   * A closed archive can no longer have new files added to it. After 
+   * A closed archive can no longer have new files added to it. After
    * closing, the zip file is completely written to the output stream.
    * @return bool $success
    */
@@ -417,7 +417,7 @@ class ZipStreamer {
    * @param int $timestamp
    * @return 2-byte encoded DOS Date
    */
-  private static function getDosTime($timestamp = 0) {
+  public static function getDosTime($timestamp = 0) {
     $timestamp = (int) $timestamp;
     $oldTZ = @date_default_timezone_get();
     date_default_timezone_set('UTC');
@@ -491,6 +491,7 @@ class DOS extends ExtFileAttr {
 }
 
 class GPFLAGS {
+  const NONE = 0x0000; // no flags set
   const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
   const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
 }

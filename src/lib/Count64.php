@@ -26,17 +26,29 @@ const INT64_HIGH_MAP = 0xffffffff00000000;
 const INT64_LOW_MAP =  0x00000000ffffffff;
 
 /**
-* Unsigned right shift
-* @param int $bits integer to be shifted
-* @param int $shift number of bits to be shifted
-* @return int shifted integer
-*/
+ * Unsigned right shift
+ *
+ * @param int $bits integer to be shifted
+ * @param int $shift number of bits to be shifted
+ * @return int shifted integer
+ */
 function urShift($bits, $shift) {
-  if($shift == 0) {
+  if ($shift == 0) {
     return $bits;
   }
   return ($bits >> $shift) & ~(1 << (8 * PHP_INT_SIZE - 1) >> ($shift - 1));
 }
+
+/**
+ * Convert binary data string to readable hex string
+ *
+ * @param string $data binary string
+ * @return string readable hex string
+ */
+function byte2hex($data) {
+  return unpack("h*", $data);
+}
+
 /**
  * Pack 2 byte data into binary string, little endian format
  *
@@ -48,6 +60,16 @@ function pack16le($data) {
 }
 
 /**
+ * Unpack 2 byte binary string, little endian format to 2 byte data
+ *
+ * @param string $data binary string
+ * @return integer 2 byte data
+ */
+function unpack16le($data) {
+  return unpack('v', $data)[1];
+}
+
+/**
  * Pack 4 byte data into binary string, little endian format
  *
  * @param mixed $data data
@@ -55,6 +77,16 @@ function pack16le($data) {
  */
 function pack32le($data) {
   return pack('V', $data);
+}
+
+/**
+ * Unpack 4 byte binary string, little endian format to 4 byte data
+ *
+ * @param string $data binary string
+ * @return integer 4 byte data
+ */
+function unpack32le($data) {
+  return unpack('V', $data)[1];
 }
 
 /**
@@ -73,6 +105,9 @@ function pack64le($data) {
       $hiBytess = ($data->_getValue() & INT64_HIGH_MAP) >> 32;
       $loBytess = $data->_getValue() & INT64_LOW_MAP;
     }
+  } else if (4 == PHP_INT_SIZE) {
+    $hiBytess = 0;
+    $loBytess = $data;
   } else {
     $hiBytess = ($data & INT64_HIGH_MAP) >> 32;
     $loBytess = $data & INT64_LOW_MAP;
@@ -80,11 +115,26 @@ function pack64le($data) {
   return pack('VV', $loBytess, $hiBytess);
 }
 
+/**
+ * Unpack 8 byte binary string, little endian format to 8 byte data
+ *
+ * @param string $data binary string
+ * @return Count64Base data
+ */
+function unpack64le($data) {
+  $bytes = unpack('V2', $data);
+  return Count64::construct(array(
+      $bytes[1],
+      $bytes[2]
+  ));
+}
 
 abstract class Count64Base {
+
   function __construct($value = 0) {
     $this->set($value);
   }
+
   abstract public function set($value);
   abstract public function add($value);
   abstract public function getHiBytes();
@@ -95,7 +145,7 @@ abstract class Count64Base {
   const EXCEPTION_ADD_INVALID_ARGUMENT = "Count64 object can only be add()ed integer or Count64 values";
 }
 
-class Count64_32 extends Count64Base{
+class Count64_32 extends Count64Base {
   private $loBytes;
   private $hiBytes;
 
@@ -130,22 +180,22 @@ class Count64_32 extends Count64Base{
 
   public function add($value) {
     if (is_int($value)) {
-      $sum = (int)($this->loBytes + $value);
+      $sum = (int) ($this->loBytes + $value);
       // overflow!
       if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
-      || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
-        $this->hiBytes = (int)($this->hiBytes + 1);
+        || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        $this->hiBytes = (int) ($this->hiBytes + 1);
       }
       $this->loBytes = $sum;
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $value = $value->_getValue();
-      $sum = (int)($this->loBytes + $value[1]);
+      $sum = (int) ($this->loBytes + $value[1]);
       if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
-      || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
-        $this->hiBytes = (int)($this->hiBytes + 1);
+        || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        $this->hiBytes = (int) ($this->hiBytes + 1);
       }
       $this->loBytes = $sum;
-      $this->hiBytes = (int)($this->hiBytes + $value[0]);
+      $this->hiBytes = (int) ($this->hiBytes + $value[0]);
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
     }
@@ -161,7 +211,7 @@ class Count64_64 extends Count64Base {
   }
 
   public function getLoBytes() {
-    return $this->value & INT64_LOW_MAP; 
+    return $this->value & INT64_LOW_MAP;
   }
 
   public function _getValue() {
@@ -185,9 +235,9 @@ class Count64_64 extends Count64Base {
 
   public function add($value) {
     if (is_int($value)) {
-      $this->value = (int)($this->value + $value);
+      $this->value = (int) ($this->value + $value);
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $this->value = (int)($this->value + $value->_getValue());
+      $this->value = (int) ($this->value + $value->_getValue());
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
     }
@@ -195,7 +245,7 @@ class Count64_64 extends Count64Base {
   }
 }
 
-abstract class Count64  {
+abstract class Count64 {
   public static function construct($value = 0) {
     if (4 == PHP_INT_SIZE) {
       return new Count64_32($value);
