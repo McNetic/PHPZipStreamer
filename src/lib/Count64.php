@@ -66,7 +66,8 @@ function pack16le($data) {
  * @return integer 2 byte data
  */
 function unpack16le($data) {
-  return unpack('v', $data)[1];
+  $result = unpack('v', $data);
+  return $result[1];
 }
 
 /**
@@ -86,7 +87,8 @@ function pack32le($data) {
  * @return integer 4 byte data
  */
 function unpack32le($data) {
-  return unpack('V', $data)[1];
+  $result = unpack('V', $data);
+  return $result[1];
 }
 
 /**
