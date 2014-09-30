@@ -175,7 +175,6 @@ class Zip64EndOfCentralDirectoryLocator extends zipRecord {
 
   public static function constructFromString($str, $offset = 0, $size = -1) {
     $z64eocdlPos = strrpos($str, static::getMagicBytes(), -$offset);
-    // TODO printf("offset %d pos %d bytes %s", $offset, $z64eocdlPos, unpack("h*", Zip64EndOfCentralDirectoryLocator::getMagicBytes())[1]);
     if (self::$unitTest) {
       self::$unitTest->assertFalse(False === $z64eocdlPos, "zip64 end of central directory locator missing");
     }
@@ -375,11 +374,13 @@ class CentralDirectoryHeader extends zipRecord {
     } else {
       $this->filename = '';
     }
-    $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
-    if (self::$unitTest) {
-      self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+    if (0 < $this->lengthExtraField) {
+      $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
+      if (self::$unitTest) {
+        self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+      }
+      $pos = $this->z64Ext->end + 1;
     }
-    $pos = $this->z64Ext->end + 1;
     if (0 < $this->lengthComment) {
       $this->comment = (string) readstr($str, $pos, $this->lengthComment);
     } else {
@@ -549,11 +550,13 @@ class LocalFileHeader extends zipRecord {
     } else {
       $this->filename = '';
     }
-    $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
-    if (self::$unitTest) {
-      self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+    if (0 < $this->lengthExtraField) {
+      $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
+      if (self::$unitTest) {
+        self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+      }
+      $pos = $this->z64Ext->end + 1;
     }
-    $pos = $this->z64Ext->end + 1;
     $this->end = $pos - 1;
   }
 }

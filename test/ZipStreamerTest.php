@@ -32,7 +32,6 @@ class File {
 }
 
 class TestZipStreamer extends \PHPUnit_Framework_TestCase {
-  const ATTR_VERSION_TO_EXTRACT = 0x2d; // version needed to extract (min. 4.5)
   const ATTR_MADE_BY_VERSION = 0x032d; // made by version (upper byte: UNIX, lower byte v4.5)
   const EXT_FILE_ATTR_DIR = 0x41ed0010;
   const EXT_FILE_ATTR_FILE = 0x81640000;
@@ -52,6 +51,17 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   protected function getOutput() {
     rewind($this->outstream);
     return stream_get_contents($this->outstream);
+  }
+
+  protected static function getVersionToExtract($zip64, $isDir) {
+    if ($zip64) {
+      $version = 0x2d; // 4.5 - File uses ZIP64 format extensions
+    } else if ($isDir) {
+      $version = 0x14; // 2.0 - File is a folder (directory)
+    } else {
+      $version = 0x0a; // 1.0 - Default value
+    }
+    return $version;
   }
 
   protected function assertOutputEqualsFile($filename) {
@@ -99,7 +109,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $z64eocdrec->assertValues(array(
           "size" => Count64::construct(44),
           "madeByVersion" => pack16le(self::ATTR_MADE_BY_VERSION),
-          "versionToExtract" => pack16le(self::ATTR_VERSION_TO_EXTRACT),
+          "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], False)),
           "numberDisk" => 0,
           "numberDiskStartCDR" => 0,
           "numberEntriesDisk" => Count64::construct(sizeof($files)),
@@ -135,7 +145,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $this->assertArrayHasKey($filename, $files, "CDH entry has valid name");
       $cdhead->assertValues(array(
           "madeByVersion" => pack16le(self::ATTR_MADE_BY_VERSION),
-          "versionToExtract" => pack16le(self::ATTR_VERSION_TO_EXTRACT),
+          "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
           "gpFlags" => (File::FILE == $files[$filename]->type ? pack16le(GPFLAGS::ADD) : pack16le(GPFLAGS::NONE)),
           "gzMethod" => pack16le(0x0000),
           "dosTime" => pack32le(ZipStreamer::getDosTime($files[$filename]->date)),
@@ -271,8 +281,44 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
                 new File('test/test12.txt', File::FILE, 1, 'Duis malesuada lorem lorem, id sodales sapien sagittis ac. Donec in porttitor tellus, eu aliquam elit. Curabitur eu aliquam eros. Nulla accumsan augue quam, et consectetur quam eleifend eget. Donec cursus dolor lacus, eget pellentesque risus tincidunt at. Pellentesque rhoncus purus eget semper porta. Duis in magna tincidunt, fermentum orci non, consectetur nibh. Aliquam tortor eros, dignissim a posuere ac, rhoncus a justo. Sed sagittis velit ac massa pulvinar, ac pharetra ipsum fermentum. Etiam commodo lorem a scelerisque facilisis.')
             ),
             "simple structure (zip64)"
+        ),
+        array(
+            array(
+                'zip64' => False
+            ),
+            array(),
+            "empty"
+        ),
+        array(
+            array(
+                'zip64' => False
+            ),
+            array(
+                new File('test/', File::DIR, 1)
+            ),
+            "one empty dir"
+        ),
+        array(
+            array(
+                'zip64' => False
+            ),
+            array(
+                new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.')
+            ),
+            "one file"
+        ),
+        array(
+            array(
+                'zip64' => False
+            ),
+            array(
+                new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.'),
+                new File('test/', File::DIR, 1),
+                new File('test/test12.txt', File::FILE, 1, 'Duis malesuada lorem lorem, id sodales sapien sagittis ac. Donec in porttitor tellus, eu aliquam elit. Curabitur eu aliquam eros. Nulla accumsan augue quam, et consectetur quam eleifend eget. Donec cursus dolor lacus, eget pellentesque risus tincidunt at. Pellentesque rhoncus purus eget semper porta. Duis in magna tincidunt, fermentum orci non, consectetur nibh. Aliquam tortor eros, dignissim a posuere ac, rhoncus a justo. Sed sagittis velit ac massa pulvinar, ac pharetra ipsum fermentum. Etiam commodo lorem a scelerisque facilisis.')
+            ),
+            "simple structure"
         )
-    );
+            );
   }
 
   /**
@@ -281,9 +327,8 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
    * runInSeparateProcess
    */
   public function testZipfile($options, $files, $description) {
-    $zip = new ZipStreamer(array(
-        'outstream' => $this->outstream
-    ));
+    $options = array_merge($options, array('outstream' => $this->outstream));
+    $zip = new ZipStreamer($options);
     foreach ($files as $file) {
       if (File::DIR == $file->type) {
         $zip->addEmptyDir($file->filename, $file->date);
