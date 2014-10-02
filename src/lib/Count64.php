@@ -24,6 +24,7 @@ namespace ZipStreamer;
 
 const INT64_HIGH_MAP = 0xffffffff00000000;
 const INT64_LOW_MAP =  0x00000000ffffffff;
+const INT_MAX_32 = 0xffffffff;
 
 /**
  * Unsigned right shift
@@ -130,8 +131,10 @@ function unpack64le($data) {
 }
 
 abstract class Count64Base {
+  protected $limit32Bit = False;
 
-  function __construct($value = 0) {
+  function __construct($value = 0, $limit32Bit = False) {
+    $this->limit32Bit = $limit32Bit;
     $this->set($value);
   }
 
@@ -143,6 +146,7 @@ abstract class Count64Base {
 
   const EXCEPTION_SET_INVALID_ARGUMENT = "Count64 object can only be set() to integer or Count64 values";
   const EXCEPTION_ADD_INVALID_ARGUMENT = "Count64 object can only be add()ed integer or Count64 values";
+  const EXCEPTION_32BIT_OVERFLOW = "Count64 object limited to 32 bit (overflow)";
 }
 
 class Count64_32 extends Count64Base {
@@ -167,9 +171,15 @@ class Count64_32 extends Count64Base {
       $this->hiBytes = 0;
     } else if (is_array($value) && 2 == sizeof($value)) {
       $this->loBytes = $value[0];
+      if ($this->limit32Bit && 0 !== $value[1]) {
+        throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
       $this->hiBytes = $value[1];
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $value = $value->_getValue();
+          if ($this->limit32Bit && 0 !== $value[0]) {
+        throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
       $this->hiBytes = $value[0];
       $this->loBytes = $value[1];
     } else {
@@ -184,6 +194,9 @@ class Count64_32 extends Count64Base {
       // overflow!
       if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
         || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        if ($this->limit32Bit) {
+          throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+        }
         $this->hiBytes = (int) ($this->hiBytes + 1);
       }
       $this->loBytes = $sum;
@@ -192,9 +205,15 @@ class Count64_32 extends Count64Base {
       $sum = (int) ($this->loBytes + $value[1]);
       if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
         || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        if ($this->limit32Bit) {
+          throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+        }
         $this->hiBytes = (int) ($this->hiBytes + 1);
       }
       $this->loBytes = $sum;
+      if ($this->limit32Bit && 0 !== $value[0]) {
+        throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
       $this->hiBytes = (int) ($this->hiBytes + $value[0]);
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
@@ -220,13 +239,24 @@ class Count64_64 extends Count64Base {
 
   public function set($value) {
     if (is_int($value)) {
+      if ($this->limit32Bit && INT_MAX_32 < $value) {
+        throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
       $this->value = $value;
     } else if (is_array($value) && 2 == sizeof($value)) {
+      if ($this->limit32Bit && 0 !== $value[1]) {
+        throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
       $this->value = $value[1];
       $this->value = $this->value << 32;
       $this->value = $this->value + $value[0];
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $this->value = $value->_getValue();
+      $value = $value->_getValue();
+      if ($this->limit32Bit && INT_MAX_32 < $value) {
+        throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
+      $this->value = $value;
+
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_SET_INVALID_ARGUMENT);
     }
@@ -235,22 +265,26 @@ class Count64_64 extends Count64Base {
 
   public function add($value) {
     if (is_int($value)) {
-      $this->value = (int) ($this->value + $value);
+      $sum = (int) ($this->value + $value);
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $this->value = (int) ($this->value + $value->_getValue());
+      $sum = (int) ($this->value + $value->_getValue());
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
     }
+    if ($this->limit32Bit && INT_MAX_32 < $sum) {
+      throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
+    }
+    $this->value = $sum;
     return $this;
   }
 }
 
 abstract class Count64 {
-  public static function construct($value = 0) {
+  public static function construct($value = 0, $limit32Bit = False) {
     if (4 == PHP_INT_SIZE) {
-      return new Count64_32($value);
+      return new Count64_32($value, $limit32Bit);
     } else {
-      return new Count64_64($value);
+      return new Count64_64($value, $limit32Bit);
     }
   }
 }

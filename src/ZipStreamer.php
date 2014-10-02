@@ -96,7 +96,7 @@ class ZipStreamer {
                                                  UNIX::S_IRWXU | UNIX::S_IRGRP | UNIX::S_IXGRP |
                                                  UNIX::S_IROTH | UNIX::S_IXOTH) |
                             DOS::getExtFileAttr(DOS::DIR);
-    $this->offset = Count64::construct(0);
+    $this->offset = Count64::construct(0, !$this->zip64);
   }
 
   function __destruct() {
@@ -213,7 +213,7 @@ class ZipStreamer {
 
       // build cdRec
       $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod,
-          Count64::construct(0), Count64::construct(0), 0, $this->extFileAttrDir, True);
+          Count64::construct(0, !$this->zip64), Count64::construct(0, !$this->zip64), 0, $this->extFileAttrDir, True);
 
       // calc offset
       $this->offset->add($lfhLength);
@@ -287,8 +287,8 @@ class ZipStreamer {
   }
 
   private function streamFileData($stream, $compress) {
-    $dataLength = Count64::construct(0);
-    $gzLength = Count64::construct(0);
+    $dataLength = Count64::construct(0, !$this->zip64);
+    $gzLength = Count64::construct(0, !$this->zip64);
     $hashCtx = hash_init('crc32b');
 
     while (!feof($stream)) {
@@ -371,7 +371,7 @@ class ZipStreamer {
   }
 
   private function buildZip64EndOfCentralDirectoryLocator($cdRecLength) {
-    $zip64RecStart = Count64::construct($this->offset)->add($cdRecLength);
+    $zip64RecStart = Count64::construct($this->offset, !$this->zip64)->add($cdRecLength);
 
         return ''
         . pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
