@@ -64,9 +64,11 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   }
 
   protected function assertOutputZipfileOK($files, $options) {
-    $files = array_combine(array_map(function ($element) {
-      return $element->filename;
-    }, $files), $files);
+    if (0 < sizeof($files)) { // php5.3 does not combine empty arrays
+      $files = array_combine(array_map(function ($element) {
+        return $element->filename;
+      }, $files), $files);
+    }
     $output = $this->getOutput();
 
     $eocdrec = EndOfCentralDirectoryRecord::constructFromString($output);
