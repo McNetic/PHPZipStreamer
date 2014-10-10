@@ -27,14 +27,14 @@
  * @author André Rothe <arothe@zks.uni-leipzig.de>
  * @copyright Copyright (C) 2013-2014 Nicolai Ehemann and contributors
  * @license GNU GPL
- * @version 0.4
+ * @version 0.5.1
  */
 namespace ZipStreamer;
 
 require "lib/Count64.php";
 
 class ZipStreamer {
-  const VERSION = "0.5";
+  const VERSION = "0.5.1";
 
   const ZIP_LOCAL_FILE_HEADER = 0x04034b50; // local file header signature
   const ZIP_CENTRAL_FILE_HEADER = 0x02014b50; // central file header signature
@@ -165,12 +165,14 @@ class ZipStreamer {
     list($gpFlags, $lfhLength) = $this->beginFile($filePath, $fileComment, $timestamp, $gpFlags, $gzMethod);
     list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
 
+    $ddLength = $this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
+
     // build cdRec
     $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod,
         $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile);
 
     // calc offset
-    $this->offset->add($lfhLength)->add($gzLength);
+    $this->offset->add($ddLength)->add($lfhLength)->add($gzLength);
 
     return true;
   }
@@ -319,6 +321,16 @@ class ZipStreamer {
       . pack16le(strlen($zip64Ext))             // extra field length              2 bytes
       . $filePath                               // file name                       (variable size)
       . $zip64Ext;                              // extra field                     (variable size)
+  }
+
+  private function addDataDescriptor($dataLength, $gzLength, $dataCRC32) {
+
+    $this->write(''
+        . pack32le($dataCRC32)  // crc-32                          4 bytes
+        . pack64le($gzLength)   // compressed size                 8 bytes
+        . pack64le($dataLength) // uncompressed size               8 bytes
+        .'');
+    return 20;
   }
 
   private function buildZip64EndOfCentralDirectoryRecord($cdRecLength) {

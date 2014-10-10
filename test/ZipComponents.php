@@ -175,7 +175,6 @@ class Zip64EndOfCentralDirectoryLocator extends zipRecord {
 
   public static function constructFromString($str, $offset = 0, $size = -1) {
     $z64eocdlPos = strrpos($str, static::getMagicBytes(), -$offset);
-    // TODO printf("offset %d pos %d bytes %s", $offset, $z64eocdlPos, unpack("h*", Zip64EndOfCentralDirectoryLocator::getMagicBytes())[1]);
     if (self::$unitTest) {
       self::$unitTest->assertFalse(False === $z64eocdlPos, "zip64 end of central directory locator missing");
     }
@@ -298,7 +297,7 @@ class CentralDirectoryHeader extends zipRecord {
   public $fileAttrExternal;
   public $offsetStart;
   public $filename;
-  public $zip64Ext;
+  public $z64Ext;
   public $comment;
 
   public function __toString() {
@@ -469,7 +468,12 @@ class FileEntry extends zipRecord {
       }
     }
     if (GPFLAGS::ADD & $this->lfh->gpFlags) {
-      $this->dd = DataDescriptor::constructFromString(str, pos);
+      if (is_null($this->lfh->z64Ext)) {
+        $ddLength = 12;
+      } else {
+        $ddLength = 20;
+      }
+      $this->dd = DataDescriptor::constructFromString($str, $pos, $ddLength);
       $pos = $this->dd->end + 1;
     }
 
@@ -493,7 +497,7 @@ class LocalFileHeader extends zipRecord {
   public $lengthFilename;
   public $lengthExtraField;
   public $filename;
-  public $zip64Ext;
+  public $z64Ext;
 
   public function __toString() {
     return sprintf(
@@ -506,14 +510,14 @@ class LocalFileHeader extends zipRecord {
         "Uncompressed file size:                   %d\n" .
         "Filename length:                          %d\n" .
         "Extra field length:                       %d\n" .
-        "Filename:                                 %s\n" .
-        $this->versionToExtract,
-        $this->gpFlags,
-        $this->gzMethod,
+        "Filename:                                 %s\n" ,
+        bin2hex($this->versionToExtract),
+        bin2hex($this->gpFlags),
+        bin2hex($this->gzMethod),
         $this->dosTime,
         $this->dataCRC32,
-        $this->sizeCompressed,
-        $this->size,
+        hexIfFFFFFFFF($this->sizeCompressed),
+        hexIfFFFFFFFF($this->size),
         $this->lengthFilename,
         $this->lengthExtraField,
         $this->filename);
@@ -536,8 +540,8 @@ class LocalFileHeader extends zipRecord {
       throw new ParseException("invalid magic");
     }
     $this->versionToExtract = readstr($str, $pos, 2);
-    $this->gpFlags = readstr($str, $pos, 2);
-    $this->gzMethod = readstr($str, $pos, 2);
+    $this->gpFlags = (int) unpack16le(readstr($str, $pos, 2));
+    $this->gzMethod = (int) unpack16le(readstr($str, $pos, 2));
     $this->dosTime = readstr($str, $pos, 4);
     $this->dataCRC32 = (int) unpack32le(readstr($str, $pos, 4));
     $this->sizeCompressed = (int) unpack32le(readstr($str, $pos, 4));
@@ -558,4 +562,40 @@ class LocalFileHeader extends zipRecord {
   }
 }
 
+/**
+ * @codeCoverageIgnore
+ */
+class DataDescriptor extends zipRecord {
+  protected static $shortName = "DD";
+  public $dataCRC32;
+  public $sizeCompressed;
+  public $size;
+
+  public function __toString() {
+    return sprintf(
+        "Data CRC32:                               %s\n" .
+        "Compressed file size:                     %d\n" .
+        "Uncompressed file size:                   %d\n" ,
+        $this->dataCRC32,
+        hexIfFFFFFFFF($this->sizeCompressed->getLoBytes()),
+        hexIfFFFFFFFF($this->size->getLoBytes()));
+  }
+
+  public static function constructFromString($str, $offset = 0, $size = -1) {
+    return static::__constructFromString($str, $offset, $size);
+  }
+
+  public function readFromString($str, $pos, $size = -1) {
+    $this->begin = $pos;
+    $this->dataCRC32 = (int) unpack32le(readstr($str, $pos, 4));
+    if (20 == $size) {
+      $this->sizeCompressed = unpack64le(readstr($str, $pos, 8));
+      $this->size = unpack64le(readstr($str, $pos, 8));
+    } else {
+      $this->sizeCompressed = Count64::construct((int) unpack32le(readstr($str, $pos, 4)));
+      $this->size = Count64::construct((int) unpack32le(readstr($str, $pos, 4)));
+          }
+    $this->end = $pos - 1;
+  }
+}
 ?>

@@ -196,6 +196,9 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $file = FileEntry::constructFromString($output, $offsetStart, $sizeCompressed);
       $this->assertEquals($files[$filename]->data, $file->data);
       $this->assertEquals(crc32($files[$filename]->data), $cdhead->dataCRC32);
+      if (GPFLAGS::ADD & $file->lfh->gpFlags) {
+        $this->assertNotNull($file->dd, "data descriptor present (flag ADD set)");
+      }
       $endLastFile = $file->end;
       $first = False;
     }
@@ -300,66 +303,6 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $zip->finalize();
 
     $this->assertOutputZipfileOK($files, $options);
-  }
-
-  public function testLegacyZipfileEmpty() {
-    $zip = new ZipStreamer(array(
-        'outstream' => $this->outstream
-    ));
-    $zip->finalize();
-    $this->assertOutputEqualsFile('test/data/empty.zip');
-  }
-
-  public function testLegacyZipfileOneEmptyDir() {
-    $zip = new ZipStreamer(array(
-        'outstream' => $this->outstream
-    ));
-
-    $zip->addEmptyDir("test", 1);
-
-    $zip->finalize();
-    $this->assertOutputEqualsFile('test/data/oneEmptyDir.zip');
-  }
-
-  public function testLegacyZipfileOneFile() {
-    $zip = new ZipStreamer(array(
-        'outstream' => $this->outstream
-    ));
-
-    $string = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.';
-    $stream = fopen('php://memory', 'r+');
-    fwrite($stream, $string);
-    rewind($stream);
-    $zip->addFileFromStream($stream, 'test1.txt', 1);
-    fclose($stream);
-
-    $zip->finalize();
-    $this->assertOutputEqualsFile('test/data/oneFile.zip');
-  }
-
-  public function testLegacyZipfileSimpleStructure() {
-    $zip = new ZipStreamer(array(
-        'outstream' => $this->outstream
-    ));
-
-    $string = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.';
-    $stream = fopen('php://memory', 'r+');
-    fwrite($stream, $string);
-    rewind($stream);
-    $zip->addFileFromStream($stream, 'test1.txt', 1);
-    fclose($stream);
-
-    $zip->addEmptyDir("test", 1);
-
-    $string = 'Duis malesuada lorem lorem, id sodales sapien sagittis ac. Donec in porttitor tellus, eu aliquam elit. Curabitur eu aliquam eros. Nulla accumsan augue quam, et consectetur quam eleifend eget. Donec cursus dolor lacus, eget pellentesque risus tincidunt at. Pellentesque rhoncus purus eget semper porta. Duis in magna tincidunt, fermentum orci non, consectetur nibh. Aliquam tortor eros, dignissim a posuere ac, rhoncus a justo. Sed sagittis velit ac massa pulvinar, ac pharetra ipsum fermentum. Etiam commodo lorem a scelerisque facilisis. ';
-    $stream = fopen('php://memory', 'r+');
-    fwrite($stream, $string);
-    rewind($stream);
-    $zip->addFileFromStream($stream, 'test/test2.txt', 1);
-    fclose($stream);
-
-    $zip->finalize();
-    $this->assertOutputEqualsFile('test/data/simpleStructure.zip');
   }
 }
 
