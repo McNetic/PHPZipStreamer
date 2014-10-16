@@ -374,11 +374,13 @@ class CentralDirectoryHeader extends zipRecord {
     } else {
       $this->filename = '';
     }
-    $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
-    if (self::$unitTest) {
-      self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+    if (0 < $this->lengthExtraField) {
+      $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
+      if (self::$unitTest) {
+        self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+      }
+      $pos = $this->z64Ext->end + 1;
     }
-    $pos = $this->z64Ext->end + 1;
     if (0 < $this->lengthComment) {
       $this->comment = (string) readstr($str, $pos, $this->lengthComment);
     } else {
@@ -553,11 +555,13 @@ class LocalFileHeader extends zipRecord {
     } else {
       $this->filename = '';
     }
-    $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
-    if (self::$unitTest) {
-      self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+    if (0 < $this->lengthExtraField) {
+      $this->z64Ext = Zip64ExtendedInformationField::constructFromString($str, $pos);
+      if (self::$unitTest) {
+        self::$unitTest->assertEquals($this->lengthExtraField, $this->z64Ext->getLength(), "Z64EIF is only field and fits into propagated length");
+      }
+      $pos = $this->z64Ext->end + 1;
     }
-    $pos = $this->z64Ext->end + 1;
     $this->end = $pos - 1;
   }
 }
