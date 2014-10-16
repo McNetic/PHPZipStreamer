@@ -45,8 +45,8 @@ Characteristics
 * ZipStreamer causes no disk i/o (aside from the input streams, if they are
 created from disk), has very low cpu usage and a low memory footprint, as
 the streams are read in small chunks and immediately written to output
-* ZipStreamer always uses the Zip64 extension. Some (mostly older) zip tools 
-can not handle that. This may be made optional in the future.
+* ZipStreamer by default uses the Zip64 extension. Some (mostly older) zip 
+tools can not handle that, therefore it can be disabled (see below)
 * With the Zip64 extension, ZipStreamer can handle output zip files larger
 than 2/4 GB on both 32bit and 64bit machines
 * With the Zip64 extension, ZipStreamer can handle input streams larger then
@@ -76,6 +76,7 @@ Constructor. Initializes ZipStreamer object for immediate usage.
 Valid options for ZipStreamer are:
 
 * outstream: stream the zip file is output to (default: stdout)
+* zip64:     boolean indicating use of Zip64 extension (default: True)
 
 ######Parameters
  * array *$options* Optional, ZipStreamer and zip file options as key/value pairs.
