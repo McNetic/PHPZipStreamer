@@ -209,6 +209,33 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       if (GPFLAGS::ADD & $file->lfh->gpFlags) {
         $this->assertNotNull($file->dd, "data descriptor present (flag ADD set)");
       }
+      if ($options['zip64']) {
+        $file->lfh->assertValues(array(
+            "sizeCompressed" => 0xffffffff,
+            "size" => 0xffffffff,
+        ));
+        $file->lfh->z64Ext->assertValues(array(
+            "sizeField" => 28,
+            "size" => Count64::construct(0),
+            "sizeCompressed" => Count64::construct(0),
+            "diskNumberStart" => 0
+        ));
+      } else {
+        $file->lfh->assertValues(array(
+            "sizeCompressed" => 0,
+            "size" => 0,
+        ));
+      }
+      $file->lfh->assertValues(array(
+          "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
+          "gpFlags" => (File::FILE == $files[$filename]->type ? GPFLAGS::ADD : GPFLAGS::NONE),
+          "gzMethod" => 0x0000,
+          "dosTime" => pack32le(ZipStreamer::getDosTime($files[$filename]->date)),
+          "dataCRC32" => 0x0000,
+          "lengthFilename" => strlen($filename),
+          "filename" => $filename
+      ));
+
       $endLastFile = $file->end;
       $first = False;
     }

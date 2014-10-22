@@ -177,7 +177,7 @@ class ZipStreamer {
       $gzMethod = GZMETHOD::STORE;
     }
 
-    list($gpFlags, $lfhLength) = $this->beginFile($filePath, $fileComment, $timestamp, $gpFlags, $gzMethod);
+    list($gpFlags, $lfhLength) = $this->beginFile($filePath, False, $fileComment, $timestamp, $gpFlags, $gzMethod);
     list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
 
     $ddLength = $this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
@@ -211,7 +211,7 @@ class ZipStreamer {
       $gpFlags = 0x0000; // Compression type 0 = stored
       $gzMethod = GZMETHOD::STORE; // Compression type 0 = stored
 
-      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, $fileComment, $timestamp, $gpFlags, $gzMethod);
+      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, True, $fileComment, $timestamp, $gpFlags, $gzMethod);
 
       // build cdRec
       $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $timestamp, $gpFlags, $gzMethod,
@@ -268,7 +268,7 @@ class ZipStreamer {
     return fflush($this->outstream);
   }
 
-  private function beginFile($filePath, $fileComment, $timestamp, $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE,
+  private function beginFile($filePath, $isDir, $fileComment, $timestamp, $gpFlags = 0x0000, $gzMethod = GZMETHOD::STORE,
       $dataLength = 0, $gzLength = 0, $dataCRC32 = 0) {
 
     $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
@@ -280,7 +280,7 @@ class ZipStreamer {
     }
 
     $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength,
-        $gzLength, False, $dataCRC32);
+        $gzLength, $isDir, $dataCRC32);
 
     $this->write($localFileHeader);
 
