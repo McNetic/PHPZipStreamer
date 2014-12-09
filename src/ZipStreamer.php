@@ -90,7 +90,7 @@ class ZipStreamer {
     }
     // initialize default external file attributes
     $this->extFileAttrFile = UNIX::getExtFileAttr(UNIX::S_IFREG |
-                                                  UNIX::S_IRUSR | UNIX::S_IXUSR | UNIX::S_IRGRP |
+                                                  UNIX::S_IRUSR | UNIX::S_IWUSR | UNIX::S_IRGRP |
                                                   UNIX::S_IROTH);
     $this->extFileAttrDir = UNIX::getExtFileAttr(UNIX::S_IFDIR |
                                                  UNIX::S_IRWXU | UNIX::S_IRGRP | UNIX::S_IXGRP |
