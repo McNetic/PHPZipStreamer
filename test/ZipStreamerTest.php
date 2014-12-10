@@ -34,7 +34,7 @@ class File {
 class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   const ATTR_MADE_BY_VERSION = 0x032d; // made by version (upper byte: UNIX, lower byte v4.5)
   const EXT_FILE_ATTR_DIR = 0x41ed0010;
-  const EXT_FILE_ATTR_FILE = 0x81640000;
+  const EXT_FILE_ATTR_FILE = 0x81a40000;
   protected $outstream;
 
   protected function setUp() {
