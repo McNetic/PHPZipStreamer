@@ -170,24 +170,23 @@ class ZipStreamer {
 
     $filePath = self::normalizeFilePath($filePath);
 
-    $gpFlags = GPFLAGS::ADD;
+    $gpFlags = 0;
     if ($compress) {
       $gzMethod = GZMETHOD::DEFLATE;
     } else {
       $gzMethod = GZMETHOD::STORE;
     }
 
-    list($gpFlags, $lfhLength) = $this->beginFile($filePath, False, $fileComment, $timestamp, $gpFlags, $gzMethod);
-    list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $compress);
-
-    $ddLength = $this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
+    list($dataLength, $gzLength, $dataCRC32) = $this->analyzeFileData($stream, $compress);
+    list($gpFlags, $lfhLength) = $this->beginFile($filePath, False, $fileComment, $timestamp, $gpFlags, $gzMethod, $dataLength, $gzLength, $dataCRC32);
+    $this->streamFileData($stream, $compress);
 
     // build cdRec
     $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags, $gzMethod,
         $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile, False);
 
     // calc offset
-    $this->offset->add($ddLength)->add($lfhLength)->add($gzLength);
+    $this->offset->add($lfhLength)->add($gzLength);
 
     return true;
   }
@@ -287,11 +286,12 @@ class ZipStreamer {
     return array($gpFlags, strlen($localFileHeader));
   }
 
-  private function streamFileData($stream, $compress) {
+  private function analyzeFileData($stream, $compress) {
     $dataLength = Count64::construct(0, !$this->zip64);
     $gzLength = Count64::construct(0, !$this->zip64);
     $hashCtx = hash_init('crc32b');
 
+    fseek($stream, 0);
     while (!feof($stream)) {
       $data = fread($stream, self::STREAM_CHUNK_SIZE);
       $dataLength->add(strlen($data));
@@ -301,12 +301,24 @@ class ZipStreamer {
         $data = gzdeflate($data);
       }
       $gzLength->add(strlen($data));
-      $this->write($data);
-
-      $this->flush();
     }
     $crc = unpack('N', hash_final($hashCtx, true));
     return array($dataLength, $gzLength, $crc[1]);
+  }
+
+  private function streamFileData($stream, $compress) {
+
+    fseek($stream, 0);
+    while (!feof($stream)) {
+      $data = fread($stream, self::STREAM_CHUNK_SIZE);
+      if ($compress) {
+        //TODO: this is broken.
+        $data = gzdeflate($data);
+      }
+      $this->write($data);
+      $this->flush();
+    }
+    return;
   }
 
   private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0) {
@@ -329,6 +341,8 @@ class ZipStreamer {
       $gzLength = -1;
     } else {
       $zip64Ext = '';
+      $dataLength = $dataLength->getLoBytes();
+      $gzLength = $gzLength->getLoBytes();
     }
 
     return ''
@@ -345,25 +359,6 @@ class ZipStreamer {
       . pack16le(strlen($zip64Ext))             // extra field length              2 bytes
       . $filePath                               // file name                       (variable size)
       . $zip64Ext;                              // extra field                     (variable size)
-  }
-
-  private function addDataDescriptor($dataLength, $gzLength, $dataCRC32) {
-    if ($this->zip64) {
-      $length = 20;
-      $packedGzLength = pack64le($gzLength);
-      $packedDataLength = pack64le($dataLength);
-    } else {
-      $length = 12;
-      $packedGzLength = pack32le($gzLength->getLoBytes());
-      $packedDataLength = pack32le($dataLength->getLoBytes());
-     }
-
-    $this->write(''
-        . pack32le($dataCRC32)  // crc-32                          4 bytes
-        . $packedGzLength       // compressed size                 4/8 bytes (depending on zip64 enabled)
-        . $packedDataLength     // uncompressed size               4/8 bytes (depending on zip64 enabled)
-        .'');
-    return $length;
   }
 
   private function buildZip64EndOfCentralDirectoryRecord($cdRecLength) {
