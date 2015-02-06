@@ -463,7 +463,7 @@ class FileEntry extends zipRecord {
     $pos = $this->lfh->end + 1;
     if (self::$unitTest) {
       $this->dataCompressed = readStr($str, $pos, $size);
-      if (0 < strlen($this->dataCompressed) && GZMETHOD::DEFLATE & $this->lfh->gzMethod) {
+      if (0 < strlen($this->dataCompressed) && COMPR::DEFLATE & $this->lfh->gzMethod) {
         $this->data = gzinflate($this->dataCompressed);
       } else {
         $this->data = $this->dataCompressed;

@@ -1,8 +1,7 @@
 <?php
 
 /**
-* Copyright (C) 2014-2015 Nicolai Ehemann <en@enlightened.de>
- * Copyright (C) 2014 Nicolai Ehemann <en@enlightened.de>
+ * Copyright (C) 2014-2015 Nicolai Ehemann <en@enlightened.de>
  *
  * This file is licensed under the GNU GPL version 3 or later.
  * See COPYING for details.
@@ -150,7 +149,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
           "madeByVersion" => pack16le(self::ATTR_MADE_BY_VERSION),
           "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
           "gpFlags" => (File::FILE == $files[$filename]->type ? pack16le(GPFLAGS::ADD) : pack16le(GPFLAGS::NONE)),
-          "gzMethod" => pack16le(0x0000),
+          "gzMethod" => (File::FILE == $files[$filename]->type ? pack16le($options['compress']) : pack16le(COMPR::STORE)),
           "dosTime" => pack32le(ZipStreamer::getDosTime($files[$filename]->date)),
           "lengthFilename" => strlen($filename),
           "lengthComment" => 0,
@@ -168,22 +167,18 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
         $cdhead->z64Ext->assertValues(array(
             "sizeField" => 28,
             "size" => Count64::construct($files[$filename]->getSize()),
-            // TODO: check compression
-            "sizeCompressed" => Count64::construct($files[$filename]->getSize()),
             "diskNumberStart" => 0
         ));
       } else {
         $cdhead->assertValues(array(
             "size" => $files[$filename]->getSize(),
-            // TODO: check compression
-            "sizeCompressed" => $files[$filename]->getSize(),
             "lengthExtraField" => 0,
             "diskNumberStart" => 0
         ));
       }
     }
     if (0 < sizeof($files)) {
-      $this->assertEquals($cdhead->end + 1, $beginFollowingRecord, "CDH directlty before following record");
+      $this->assertEquals($cdhead->end + 1, $beginFollowingRecord, "CDH directly before following record");
       $this->assertEquals(sizeof($files), sizeof($cdheaders), "CDH has correct number of entries");
       $this->assertEquals($sizeCD, $beginFollowingRecord - $offsetCD, "CDH has correct size");
     } else {
@@ -230,7 +225,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $file->lfh->assertValues(array(
           "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
           "gpFlags" => (File::FILE == $files[$filename]->type ? GPFLAGS::ADD : GPFLAGS::NONE),
-          "gzMethod" => 0x0000,
+          "gzMethod" => (File::FILE == $files[$filename]->type ? $options['compress'] : COMPR::STORE),
           "dosTime" => pack32le(ZipStreamer::getDosTime($files[$filename]->date)),
           "dataCRC32" => 0x0000,
           "lengthFilename" => strlen($filename),
@@ -277,81 +272,62 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   }
 
   public function providerZipfileOK() {
-    // options, file(s), description
-    return array(
+    $zip64Options = array(array(True, 'True'), array(False, 'False'));
+    $defaultLevelOption = array(array(COMPR::NORMAL, 'COMPR::NORMAL'));
+    $compressOptions = array(array(COMPR::STORE, 'COMPR::STORE'), array(COMPR::DEFLATE, 'COMPR::DEFLATE'));
+    $levelOptions = array(array(COMPR::SUPERFAST, 'COMPR::SUPERFAST'), array(COMPR::MAXIMUM, 'COMPR::MAXIMUM'));
+    $fileSets = array(
+      array(
+        array(),
+        "empty"
+      ),
+      array(
         array(
-            array(
-                'zip64' => True
-            ),
-            array(),
-            "empty (zip64)"
+          new File('test/', File::DIR, 1)
         ),
+        "one empty dir"
+      ),
+      array(
         array(
-            array(
-                'zip64' => True
-            ),
-            array(
-                new File('test/', File::DIR, 1)
-            ),
-            "one empty dir (zip64)"
+          new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.')
         ),
+        "one file"
+      ),
+      array(
         array(
-            array(
-                'zip64' => True
-            ),
-            array(
-                new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.')
-            ),
-            "one file (zip64)"
+          new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.'),
+          new File('test/', File::DIR, 1),
+          new File('test/test12.txt', File::FILE, 1, 'Duis malesuada lorem lorem, id sodales sapien sagittis ac. Donec in porttitor tellus, eu aliquam elit. Curabitur eu aliquam eros. Nulla accumsan augue quam, et consectetur quam eleifend eget. Donec cursus dolor lacus, eget pellentesque risus tincidunt at. Pellentesque rhoncus purus eget semper porta. Duis in magna tincidunt, fermentum orci non, consectetur nibh. Aliquam tortor eros, dignissim a posuere ac, rhoncus a justo. Sed sagittis velit ac massa pulvinar, ac pharetra ipsum fermentum. Etiam commodo lorem a scelerisque facilisis.')
         ),
-        array(
-            array(
-                'zip64' => True
-            ),
-            array(
-                new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.'),
-                new File('test/', File::DIR, 1),
-                new File('test/test12.txt', File::FILE, 1, 'Duis malesuada lorem lorem, id sodales sapien sagittis ac. Donec in porttitor tellus, eu aliquam elit. Curabitur eu aliquam eros. Nulla accumsan augue quam, et consectetur quam eleifend eget. Donec cursus dolor lacus, eget pellentesque risus tincidunt at. Pellentesque rhoncus purus eget semper porta. Duis in magna tincidunt, fermentum orci non, consectetur nibh. Aliquam tortor eros, dignissim a posuere ac, rhoncus a justo. Sed sagittis velit ac massa pulvinar, ac pharetra ipsum fermentum. Etiam commodo lorem a scelerisque facilisis.')
-            ),
-            "simple structure (zip64)"
-        ),
-        array(
-            array(
-                'zip64' => False
-            ),
-            array(),
-            "empty"
-        ),
-        array(
-            array(
-                'zip64' => False
-            ),
-            array(
-                new File('test/', File::DIR, 1)
-            ),
-            "one empty dir"
-        ),
-        array(
-            array(
-                'zip64' => False
-            ),
-            array(
-                new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.')
-            ),
-            "one file"
-        ),
-        array(
-            array(
-                'zip64' => False
-            ),
-            array(
-                new File('test1.txt', File::FILE, 1, 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed elit diam, posuere vel aliquet et, malesuada quis purus. Aliquam mattis aliquet massa, a semper sem porta in. Aliquam consectetur ligula a nulla vestibulum dictum. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nullam luctus faucibus urna, accumsan cursus neque laoreet eu. Suspendisse potenti. Nulla ut feugiat neque. Maecenas molestie felis non purus tempor, in blandit ligula tincidunt. Ut in tortor sit amet nisi rutrum vestibulum vel quis tortor. Sed bibendum mauris sit amet gravida tristique. Ut hendrerit sapien vel tellus dapibus, eu pharetra nulla adipiscing. Donec in quam faucibus, cursus lacus sed, elementum ligula. Morbi volutpat vel lacus malesuada condimentum. Fusce consectetur nisl euismod justo volutpat sodales.'),
-                new File('test/', File::DIR, 1),
-                new File('test/test12.txt', File::FILE, 1, 'Duis malesuada lorem lorem, id sodales sapien sagittis ac. Donec in porttitor tellus, eu aliquam elit. Curabitur eu aliquam eros. Nulla accumsan augue quam, et consectetur quam eleifend eget. Donec cursus dolor lacus, eget pellentesque risus tincidunt at. Pellentesque rhoncus purus eget semper porta. Duis in magna tincidunt, fermentum orci non, consectetur nibh. Aliquam tortor eros, dignissim a posuere ac, rhoncus a justo. Sed sagittis velit ac massa pulvinar, ac pharetra ipsum fermentum. Etiam commodo lorem a scelerisque facilisis.')
-            ),
-            "simple structure"
-        )
+        "simple structure"
+      )
+    );
+
+    $data = array();
+    foreach ($zip64Options as $zip64) {
+      foreach ($compressOptions as $compress) {
+        $levels = $defaultLevelOption;
+        if (COMPR::DEFLATE == $compress[0]) {
+          $levels = array_merge($levels, $levelOptions);
+        }
+        foreach ($levels as $level) {
+          foreach ($fileSets as $fileSet) {
+            $options = array(
+              'zip64' => $zip64[0],
+              'compress' => $compress[0],
+              'level' => $level[0]
             );
+            $description = $fileSet[1] . ' (options = array(zip64=' . $zip64[1] . ', compress=' . $compress[1] . ', level=' . $level[1] . '))';
+            array_push($data, array(
+              $options,
+              $fileSet[0],
+              $description
+            ));
+          }
+        }
+      }
+    }
+    return $data;
   }
 
   /**
@@ -364,12 +340,12 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $zip = new ZipStreamer($options);
     foreach ($files as $file) {
       if (File::DIR == $file->type) {
-        $zip->addEmptyDir($file->filename, $file->date);
+        $zip->addEmptyDir($file->filename, array('timestamp' => $file->date));
       } else {
         $stream = fopen('php://memory', 'r+');
         fwrite($stream, $file->data);
         rewind($stream);
-        $zip->addFileFromStream($stream, $file->filename, $file->date);
+        $zip->addFileFromStream($stream, $file->filename, array('timestamp' => $file->date));
         fclose($stream);
       }
     }

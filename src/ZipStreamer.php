@@ -307,7 +307,7 @@ class ZipStreamer {
     if (COMPR::STORE === $compress) {
     } else if (COMPR::DEFLATE === $compress) {
       if (!class_exists('\HttpDeflateStream')) {
-      	throw new \Exception('unable to use compression method DEFLATE (requires pecl_http)');
+      	throw new \Exception('unable to use compression method DEFLATE (requires pecl_http >= 0.10 and < 2.0)');
       }
     } else {
       throw new \Exception('invalid option ' . $compress . ' (compression method)');

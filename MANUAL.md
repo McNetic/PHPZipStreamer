@@ -45,8 +45,9 @@ Characteristics
 * **Performance:** ZipStreamer causes no disk i/o (aside from the input
 streams, if they are created from disk), has low cpu usage (especially when
 not compressing) and a low memory footprint, as the streams are read in small
-* **Compatibility issues:** ZipStreamer by default uses the Zip64 extension. Some (mostly older) zip 
-tools and Mac OS X can not handle that, therefore it can be disabled (see below)
+* **Compatibility issues:** ZipStreamer by default uses the Zip64 extension. Some
+(mostly older) zip tools and Mac OS X can not handle that, therefore it can be
+disabled (see below)
 * **Large output files:** With the Zip64 extension, ZipStreamer can handle
 output zip files larger than 2/4 GB on both 32bit and 64bit machines
 * **Large input files:** With the Zip64 extension, ZipStreamer can handle
@@ -55,9 +56,9 @@ machines, that usually means that the LFS has to be enabled (but if the stream
 source is not the filesystem, that may not even be necessary)
 * **Compression:** ZipStreamer will not compress the content by default. That
 means that the output zip file will be of the same size (plus a few bytes) as
-the input files. However, if the pecl_http extension is available, deflate
-(the zip standard) compression can be enabled and/or disabled globally and
-per file
+the input files. However, if the pecl_http extension (>= 0.10 and < 2.0) is
+available, deflate (the zip standard) compression can be enabled and/or
+disabled globally and per file
 
 API Documentation
 -----------------
