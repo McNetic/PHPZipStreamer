@@ -80,8 +80,9 @@ Valid options for ZipStreamer are:
 * stream *outstream*: the zip file is output to (default: stdout)
 * int *compress*: compression method (one of *COMPR::STORE*,
 *COMPR::DEFLATE*, default *COMPR::STORE*) can be overridden for single files
-* int *level*: compression level (one of *COMPR::NORMAL*, *COMPR::MAXIMUM*,
-*COMPR::SUPERFAST*, default *COMPR::NORMAL*) can be overridden for single files
+* int *level*: compression level (one of *COMPR::NONE*, *COMPR::NORMAL*, 
+*COMPR::MAXIMUM*, *COMPR::SUPERFAST*, default *COMPR::NORMAL*) can be 
+overridden for single files
 * zip64:     boolean indicating use of Zip64 extension (default: True)
 
 

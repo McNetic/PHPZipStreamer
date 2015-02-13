@@ -51,6 +51,16 @@ function byte2hex($data) {
 }
 
 /**
+ * Pack 1 byte data into binary string
+ *
+ * @param mixed $data data
+ * @return string 1 byte binary string
+ */
+function pack8($data) {
+  return pack('C', $data);
+}
+
+/**
  * Pack 2 byte data into binary string, little endian format
  *
  * @param mixed $data data

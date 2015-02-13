@@ -39,9 +39,10 @@ class COMPR {
   const DEFLATE = 0x0008; //  8 - The file is deflated
 
   // compression level (for deflate compression)
-  const NORMAL = 0;
-  const MAXIMUM = 1;
-  const SUPERFAST = 2;
+  const NONE = 0;
+  const NORMAL = 1;
+  const MAXIMUM = 2;
+  const SUPERFAST = 3;
 }
 
 class ZipStreamer {
@@ -55,7 +56,7 @@ class ZipStreamer {
 
   const ATTR_MADE_BY_VERSION = 0x032d; // made by version  (upper byte: UNIX, lower byte v4.5)
 
-  const STREAM_CHUNK_SIZE = 1048576; // 1mb chunks
+  const STREAM_CHUNK_SIZE = 1048560; // 16 * 65535 = almost 1mb chunks, for best deflate performance
 
   private $extFileAttrFile;
   private $extFileAttrDir;
@@ -306,17 +307,17 @@ class ZipStreamer {
   private function validateCompressionOptions($compress, $level) {
     if (COMPR::STORE === $compress) {
     } else if (COMPR::DEFLATE === $compress) {
-      if (!class_exists('\HttpDeflateStream')) {
-      	throw new \Exception('unable to use compression method DEFLATE (requires pecl_http >= 0.10 and < 2.0)');
+      if (COMPR::NONE !== $level && !class_exists('\HttpDeflateStream')) {
+        throw new \Exception('unable to use compression method DEFLATE (requires pecl_http >= 0.10 and < 2.0)');
       }
     } else {
       throw new \Exception('invalid option ' . $compress . ' (compression method)');
     }
 
-    if (COMPR::NORMAL === $level ||
+    if (!(COMPR::NONE === $level ||
+        COMPR::NORMAL === $level ||
         COMPR::MAXIMUM === $level ||
-        COMPR::SUPERFAST === $level) {
-    } else {
+        COMPR::SUPERFAST === $level)) {
       throw new \Exception('invalid option ' . $level . ' (compression level');
     }
   }
@@ -353,19 +354,23 @@ class ZipStreamer {
     $gzLength = Count64::construct(0, !$this->zip64);
     $hashCtx = hash_init('crc32b');
     if (COMPR::DEFLATE === $compress) {
-      $deflateFlags = \HttpDeflateStream::TYPE_RAW;
-      switch ($level) {
-        case COMPR::NORMAL:
-          $deflateFlags |= \HttpDeflateStream::LEVEL_DEF;
-          break;
-        case COMPR::MAXIMUM:
-          $deflateFlags |= \HttpDeflateStream::LEVEL_MAX;
-          break;
-        case COMPR::SUPERFAST:
-          $deflateFlags |= \HttpDeflateStream::LEVEL_MIN;
-          break;
+      if (COMPR::NONE === $level) {
+        $compStream = new DeflateStoreStream();
+      } else {
+        $deflateFlags = \HttpDeflateStream::TYPE_RAW;
+        switch ($level) {
+          case COMPR::NORMAL:
+            $deflateFlags |= \HttpDeflateStream::LEVEL_DEF;
+            break;
+          case COMPR::MAXIMUM:
+            $deflateFlags |= \HttpDeflateStream::LEVEL_MAX;
+            break;
+          case COMPR::SUPERFAST:
+            $deflateFlags |= \HttpDeflateStream::LEVEL_MIN;
+            break;
+        }
+        $compStream = new \HttpDeflateStream($deflateFlags);
       }
-      $compStream = new \HttpDeflateStream($deflateFlags);
     }
 
     while (!feof($stream)) {
@@ -628,6 +633,35 @@ class UNIX extends ExtFileAttr {
   public static function getExtFileAttr($attr) {
     return parent::getExtFileAttr($attr) << 16;
   }
+}
+
+class DeflateStoreStream {
+  const BLOCK_HEADER_NORMAL = 0x00;
+  const BLOCK_HEADER_FINAL = 0x01;
+  const BLOCK_HEADER_ERROR = 0x03;
+
+  const MAX_UNCOMPR_BLOCK_SIZE = 0xffff;
+
+  public function update($data) {
+    $result = '';
+    for ($pos = 0, $len = strlen($data); $pos < $len; $pos += self::MAX_UNCOMPR_BLOCK_SIZE) {
+      $result .= $this->write_block(self::BLOCK_HEADER_NORMAL, substr($data, $pos, self::MAX_UNCOMPR_BLOCK_SIZE));
+    }
+    return $result;
+  }
+
+  public function finish() {
+    return $this->write_block(self::BLOCK_HEADER_FINAL, '');
+  }
+
+  private function write_block($header, $data) {
+    return ''
+        . pack8($header)                    // block header                     3 bits, null padding = 1 byte
+        . pack16le(strlen($data))           // block data length                2 bytes
+        . pack16le(0xffff ^ strlen($data))  // complement of block data size    2 bytes
+        . $data                             // data
+        . '';
+      }
 }
 
 class DOS extends ExtFileAttr {

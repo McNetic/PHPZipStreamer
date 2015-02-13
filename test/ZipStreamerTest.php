@@ -275,7 +275,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $zip64Options = array(array(True, 'True'), array(False, 'False'));
     $defaultLevelOption = array(array(COMPR::NORMAL, 'COMPR::NORMAL'));
     $compressOptions = array(array(COMPR::STORE, 'COMPR::STORE'), array(COMPR::DEFLATE, 'COMPR::DEFLATE'));
-    $levelOptions = array(array(COMPR::SUPERFAST, 'COMPR::SUPERFAST'), array(COMPR::MAXIMUM, 'COMPR::MAXIMUM'));
+    $levelOptions = array(array(COMPR::NONE, 'COMPR::NONE'), array(COMPR::SUPERFAST, 'COMPR::SUPERFAST'), array(COMPR::MAXIMUM, 'COMPR::MAXIMUM'));
     $fileSets = array(
       array(
         array(),
