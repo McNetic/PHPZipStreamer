@@ -307,8 +307,10 @@ class ZipStreamer {
   private function validateCompressionOptions($compress, $level) {
     if (COMPR::STORE === $compress) {
     } else if (COMPR::DEFLATE === $compress) {
-      if (COMPR::NONE !== $level && !class_exists('\HttpDeflateStream')) {
-        throw new \Exception('unable to use compression method DEFLATE (requires pecl_http >= 0.10 and < 2.0)');
+      if (COMPR::NONE !== $level
+        && !class_exists(DeflatePeclStream::PECL1_DEFLATE_STREAM_CLASS)
+        && !class_exists(DeflatePeclStream::PECL2_DEFLATE_STREAM_CLASS)) {
+        throw new \Exception('unable to use compression method DEFLATE with level other than NONE (requires pecl_http >= 0.10)');
       }
     } else {
       throw new \Exception('invalid option ' . $compress . ' (compression method)');
@@ -354,23 +356,7 @@ class ZipStreamer {
     $gzLength = Count64::construct(0, !$this->zip64);
     $hashCtx = hash_init('crc32b');
     if (COMPR::DEFLATE === $compress) {
-      if (COMPR::NONE === $level) {
-        $compStream = new DeflateStoreStream();
-      } else {
-        $deflateFlags = \HttpDeflateStream::TYPE_RAW;
-        switch ($level) {
-          case COMPR::NORMAL:
-            $deflateFlags |= \HttpDeflateStream::LEVEL_DEF;
-            break;
-          case COMPR::MAXIMUM:
-            $deflateFlags |= \HttpDeflateStream::LEVEL_MAX;
-            break;
-          case COMPR::SUPERFAST:
-            $deflateFlags |= \HttpDeflateStream::LEVEL_MIN;
-            break;
-        }
-        $compStream = new \HttpDeflateStream($deflateFlags);
-      }
+      $compStream = DeflateStream::create($level);
     }
 
     while (!feof($stream)) {
@@ -635,7 +621,60 @@ class UNIX extends ExtFileAttr {
   }
 }
 
-class DeflateStoreStream {
+abstract class DeflateStream {
+  static public function create($level) {
+    if (COMPR::NONE === $level) {
+      return new DeflateStoreStream($level);
+    } else {
+      return new DeflatePeclStream($level);
+    }
+  }
+  protected function __construct($level) {}
+
+  abstract public function update($data);
+  abstract public function finish();
+}
+
+class DeflatePeclStream extends DeflateStream {
+  private $peclDeflateStream;
+
+  const PECL1_DEFLATE_STREAM_CLASS = '\HttpDeflateStream';
+  const PECL2_DEFLATE_STREAM_CLASS = '\http\encoding\Stream\Deflate';
+
+  protected function __construct($level) {
+    $class = self::PECL1_DEFLATE_STREAM_CLASS;
+    if (!class_exists($class)) {
+      $class = self::PECL2_DEFLATE_STREAM_CLASS;
+    }
+    if (!class_exists($class)) {
+      new \Exception('unable to instantiate PECL deflate stream (requires pecl_http >= 0.10)');
+    }
+
+    $deflateFlags = constant($class . '::TYPE_RAW');
+    switch ($level) {
+      case COMPR::NORMAL:
+        $deflateFlags |= constant($class . '::LEVEL_DEF');
+        break;
+      case COMPR::MAXIMUM:
+        $deflateFlags |= constant($class . '::LEVEL_MAX');
+        break;
+      case COMPR::SUPERFAST:
+        $deflateFlags |= constant($class . '::LEVEL_MIN');
+        break;
+    }
+    $this->peclDeflateStream = new $class($deflateFlags);
+  }
+
+  public function update($data) {
+    return $this->peclDeflateStream->update($data);
+  }
+
+  public function finish() {
+    return $this->peclDeflateStream->finish();
+  }
+}
+
+class DeflateStoreStream extends DeflateStream {
   const BLOCK_HEADER_NORMAL = 0x00;
   const BLOCK_HEADER_FINAL = 0x01;
   const BLOCK_HEADER_ERROR = 0x03;
