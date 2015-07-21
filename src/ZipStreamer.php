@@ -576,13 +576,15 @@ class ZipStreamer {
 
 abstract class ExtFileAttr {
 
-  # ZIP external file attributes layout
-  # TTTTsstrwxrwxrwx0000000000ADVSHR
-  # ^^^^____________________________ UNIX file type
-  #     ^^^_________________________ UNIX setuid, setgid, sticky
-  #        ^^^^^^^^^________________ UNIX permissions
-  #                 ^^^^^^^^________ "lower-middle byte" (TODO: what is this?)
-  #                         ^^^^^^^^ DOS attributes (reserved, reserved, archived, directory, volume, system, hidden, read-only
+  /*
+    ZIP external file attributes layout
+    TTTTsstrwxrwxrwx0000000000ADVSHR
+    ^^^^____________________________ UNIX file type
+        ^^^_________________________ UNIX setuid, setgid, sticky
+           ^^^^^^^^^________________ UNIX permissions
+                    ^^^^^^^^________ "lower-middle byte" (TODO: what is this?)
+                            ^^^^^^^^ DOS attributes (reserved, reserved, archived, directory, volume, system, hidden, read-only
+  */
 
   public static function getExtFileAttr($attr) {
     return $attr;
@@ -591,7 +593,7 @@ abstract class ExtFileAttr {
 
 class UNIX extends ExtFileAttr {
 
-  # Octal
+  // Octal
   const S_IFIFO = 0010000; /* named pipe (fifo) */
   const S_IFCHR = 0020000; /* character special */
   const S_IFDIR = 0040000; /* directory */
