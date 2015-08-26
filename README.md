@@ -8,6 +8,7 @@ Copyright (C) 2013-2015 Nicolai Ehemann (en@enlightened.de) and contributors
 
 Contributors:
 * André Rothe (arothe@zks.uni-leipzig.de)
+* Others (who do not want to be mentioned)
 
 See MANUAL.md for a short intro to using ZipStreamer.
 
