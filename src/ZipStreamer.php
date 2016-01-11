@@ -668,7 +668,7 @@ class DeflatePeclStream extends DeflateStream {
   }
 
   public function update($data) {
-    return $this->peclDeflateStream->update($data);
+    return ($data ? $this->peclDeflateStream->update($data) : false);
   }
 
   public function finish() {
