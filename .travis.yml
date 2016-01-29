@@ -1,5 +1,6 @@
 language: php
-sudo: false
+sudo: required
+dist: trusty
 
 env:
  - PECL_HTTP_VERSION=1.7.6
