@@ -359,8 +359,7 @@ class ZipStreamer {
       $compStream = DeflateStream::create($level);
     }
 
-    while (!feof($stream)) {
-      $data = fread($stream, self::STREAM_CHUNK_SIZE);
+    while (!feof($stream) && $data = fread($stream, self::STREAM_CHUNK_SIZE)) {
       $dataLength->add(strlen($data));
       hash_update($hashCtx, $data);
       if (COMPR::DEFLATE === $compress) {

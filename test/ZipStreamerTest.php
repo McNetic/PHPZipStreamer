@@ -332,8 +332,6 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
 
   /**
    * @dataProvider providerZipfileOK
-   * preserveGlobalState disabled
-   * runInSeparateProcess
    */
   public function testZipfile($options, $files, $description) {
     $options = array_merge($options, array('outstream' => $this->outstream));
@@ -352,6 +350,19 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $zip->finalize();
 
     $this->assertOutputZipfileOK($files, $options);
+  }
+
+  /** https://github.com/McNetic/PHPZipStreamer/issues/29
+  *  ZipStreamer produces an error when the size of a file to be added is a
+  *   multiple of the STREAM_CHUNK_SIZE (also for empty files)
+  */
+  public function testIssue29() {
+    $options = array('zip64' => True,'compress' => COMPR::DEFLATE, 'outstream' => $this->outstream);
+    $zip = new ZipStreamer($options);
+    $stream = fopen('php://memory', 'r+');
+    $zip->addFileFromStream($stream, "test.bin");
+    fclose($stream);
+    $zip->finalize();
   }
 }
 
