@@ -20,7 +20,10 @@ pecl_module_install() {
   package=$1
   filename=$2
 
-  if [ ! -f ${PHP_TARGET_DIR}/${filename} ]
+  if php -m | grep $package > /dev/null;
+  then
+    echo "$package already installed and active"
+  elif [ ! -f ${PHP_TARGET_DIR}/${filename} ]
   then
     echo "$filename not found in extension dir, compiling"
     pecl install $force ${package}
