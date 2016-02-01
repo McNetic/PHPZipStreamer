@@ -1,7 +1,7 @@
 #!/bin/bash
-MODULE_CACHE_DIR=${TRAVIS_BUILD_DIR}/travis/module-cache/`php-config --vernum`
+MODULE_CACHE_DIR=${TRAVIS_BUILD_DIR}/travis/module-cache/$(php-config --vernum)
 PHP_CONFIG=${TRAVIS_BUILD_DIR}/travis/phpconfig.ini
-PHP_TARGET_DIR=`php-config --extension-dir`
+PHP_TARGET_DIR=$(php-config --extension-dir)
 
 if [ -d ${MODULE_CACHE_DIR} ]; then
   cp ${MODULE_CACHE_DIR}/* ${PHP_TARGET_DIR}
@@ -34,9 +34,12 @@ pecl_module_install() {
   cp ${PHP_TARGET_DIR}/${filename} ${MODULE_CACHE_DIR}
 }
 
-if [[ 1 < $(echo ${PECL_HTTP_VERSION} | cut -d. -f 1) ]]; then
+if [[ 7 -le ${PECL_HTTP_VERSION%%.*} ]]; then
   yes | pecl_module_install raphf raphf.so
   yes | pecl_module_install propro propro.so
+elif [[ 1 -lt ${PECL_HTTP_VERSION%%.*} ]]; then
+  yes | pecl_module_install raphf-1.1.2 raphf.so
+  yes | pecl_module_install propro-1.0.2 propro.so
 fi
 printf "\n\n\n" | pecl_module_install -f pecl_http-$PECL_HTTP_VERSION http.so
 
