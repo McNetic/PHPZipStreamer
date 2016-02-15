@@ -242,11 +242,51 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     }
   }
 
+  /**
+   * @return array array(filename, mimetype), expectedMimetype, expectedFilename, $description, $browser
+   */
   public function providerSendHeadersOK() {
-    // array(filename, mimetype), expectedMimetype, expextedFilename, $description
     return array(
-      array(array(), 'application/zip', 'archive.zip', 'default headers'),
-      array(array('file.zip', 'application/octet-stream'), 'application/octet-stream', 'file.zip', 'specific headers')
+      // Regular browsers
+        array(
+            array(),
+            'application/zip',
+            'archive.zip',
+            'default headers',
+            'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36',
+            'Content-Disposition: attachment; filename*=UTF-8\'\'archive.zip; filename="archive.zip"',
+        ),
+        array(
+            array(
+                'file.zip',
+                'application/octet-stream',
+                ),
+            'application/octet-stream',
+            'file.zip',
+            'specific headers',
+            'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36',
+            'Content-Disposition: attachment; filename*=UTF-8\'\'file.zip; filename="file.zip"',
+        ),
+      // Internet Explorer
+        array(
+            array(),
+            'application/zip',
+            'archive.zip',
+            'default headers',
+            'Mozilla/5.0 (compatible, MSIE 11, Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko',
+            'Content-Disposition: attachment; filename="archive.zip"',
+        ),
+        array(
+            array(
+                'file.zip',
+                'application/octet-stream',
+            ),
+            'application/octet-stream',
+            'file.zip',
+            'specific headers',
+            'Mozilla/5.0 (compatible, MSIE 11, Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko',
+            'Content-Disposition: attachment; filename="file.zip"',
+        ),
     );
   }
 
@@ -254,11 +294,24 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
    * @dataProvider providerSendHeadersOK
    * @preserveGlobalState disabled
    * @runInSeparateProcess
+   *
+   * @param array $arguments
+   * @param string $expectedMimetype
+   * @param string $expectedFilename
+   * @param string $description
+   * @param string $browser
+   * @param string $expectedDisposition
    */
-  public function testSendHeadersOK($arguments, $expectedMimetype, $expectedFilename, $description) {
+  public function testSendHeadersOKWithRegularBrowser(array $arguments,
+                                                      $expectedMimetype,
+                                                      $expectedFilename,
+                                                      $description,
+                                                      $browser,
+                                                      $expectedDisposition) {
     $zip = new ZipStreamer(array(
         'outstream' => $this->outstream
     ));
+    $_SERVER['HTTP_USER_AGENT'] = $browser;
     call_user_func_array(array($zip, "sendHeaders"), $arguments);
     $headers = xdebug_get_headers();
     $this->assertContains('Pragma: public', $headers);
@@ -267,7 +320,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $this->assertContains('Connection: Keep-Alive', $headers);
     $this->assertContains('Content-Transfer-Encoding: binary', $headers);
     $this->assertContains('Content-Type: ' . $expectedMimetype, $headers);
-    $this->assertContains('Content-Disposition: attachment; filename="' . $expectedFilename . '";', $headers);
+    $this->assertContains($expectedDisposition, $headers);
     $this->assertContainsOneMatch('/^Last-Modified: /', $headers);
   }
 

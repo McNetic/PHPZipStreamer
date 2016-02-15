@@ -166,7 +166,13 @@ class ZipStreamer {
         header('Accept-Ranges: bytes');
         header('Connection: Keep-Alive');
         header('Content-Type: ' . $contentType);
-        header('Content-Disposition: attachment; filename="' . $archiveName . '";');
+        // Use UTF-8 filenames when not using Internet Explorer
+        if(strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE') > 0) {
+          header('Content-Disposition: attachment; filename="' . rawurlencode($archiveName) . '"' );
+        }  else  {
+          header( 'Content-Disposition: attachment; filename*=UTF-8\'\'' . rawurlencode($archiveName)
+              . '; filename="' . rawurlencode($archiveName) . '"' );
+        }
         header('Content-Transfer-Encoding: binary');
       }
     }
