@@ -27,7 +27,7 @@
  * @author André Rothe <arothe@zks.uni-leipzig.de>
  * @copyright Copyright (C) 2013-2015 Nicolai Ehemann and contributors
  * @license GNU GPL
- * @version 0.7
+ * @version 1.0
  */
 namespace ZipStreamer;
 
@@ -46,7 +46,7 @@ class COMPR {
 }
 
 class ZipStreamer {
-  const VERSION = "0.7";
+  const VERSION = "1.0";
 
   const ZIP_LOCAL_FILE_HEADER = 0x04034b50; // local file header signature
   const ZIP_CENTRAL_FILE_HEADER = 0x02014b50; // central file header signature
