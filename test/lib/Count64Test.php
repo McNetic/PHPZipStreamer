@@ -155,4 +155,3 @@ class TestPack extends PHPUnit_Framework_TestCase
     $this->assertEquals($hiBytes, $count64->getHiBytes(), $description . " (hiBytes)");
   }
 }
-?>

@@ -418,5 +418,3 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $zip->finalize();
   }
 }
-
-?>

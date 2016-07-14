@@ -602,4 +602,3 @@ class DataDescriptor extends zipRecord {
     $this->end = $pos - 1;
   }
 }
-?>
