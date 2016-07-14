@@ -77,6 +77,15 @@ class ZipStreamer {
   /** @var boolean indicates zip is finalized and sent to client; no further addition possible */
   private $isFinalized = false;
 
+  private $isFileOpen = FALSE;
+  private $hashCtx = FALSE;
+  private $filePath;
+  private $addFileOptions;
+  private $gpFlags;
+  private $dataLength;
+  private $lfhLength;
+  private $gzLength;
+
   /**
    * Constructor. Initializes ZipStreamer object for immediate usage.
    * @param array $options Optional, ZipStreamer and zip file options as key/value pairs.
@@ -225,12 +234,190 @@ class ZipStreamer {
 
     // build cdRec
     $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $options['timestamp'], $gpFlags, $options['compress'],
-        $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile, False);
+                                                        $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile, FALSE);
 
     // calc offset
     $this->offset->add($ddLength)->add($lfhLength)->add($gzLength);
 
     return true;
+  }
+
+  /**
+   * Add a file to the archive at the specified location and file name.
+   *
+   * @param string $stream Stream to read data from
+   * @param string $filePath Filepath and name to be used in the archive.
+   * @param array $options Optional, additional options
+   *                            Valid options are:
+   *                               * int timestamp: timestamp for the file (default: current time)
+   *                               * string comment: comment to be added for this file (default: none)
+   *                               * int compress: compression method (override global option for this file)
+   *                               * int level: compression level (override global option for this file)
+   * @return bool $success
+   */
+  public function addFileOpen($filePath, $options = NULL) {
+    if ($this->isFinalized || $this->isFileOpen) {
+      return FALSE;
+    }
+    $this->isFileOpen = TRUE;
+    $defaultOptions = array(
+      'timestamp' => NULL,
+      'comment' => NULL,
+      'compress' => $this->compress,
+      'level' => $this->level,
+    );
+    if (is_null($options)) {
+      $options = array();
+    }
+    $this->addFileOptions = array_merge($defaultOptions, $options);
+    $this->validateCompressionOptions($this->addFileOptions['compress'], $this->addFileOptions['level']);
+
+    $this->filePath = self::normalizeFilePath($filePath);
+    $this->gpFlags = GPFLAGS::ADD;
+    $this->dataLength = Count64::construct(0, !$this->zip64);
+    $this->gzLength = Count64::construct(0, !$this->zip64);
+    $this->hashCtx = hash_init('crc32b');
+    if (COMPR::DEFLATE === $this->addFileOptions['compress']) {
+      $this->compStream = DeflateStream::create($this->addFileOptions['level']);
+    }
+
+    list($this->gpFlags, $this->lfhLength) =
+      $this->beginFile($filePath, FALSE,
+                       $this->addFileOptions['comment'], $this->addFileOptions['timestamp'],
+                       $this->gpFlags, $this->addFileOptions['compress'],
+                       0, 0, 0);
+    return TRUE;
+  }
+
+  /**
+   * Add another block of data to the file opened with addFileOpen().
+   *
+   * @param string $block
+   *   Data to write to the file.
+   * @return bool $success
+   *   FALSE if there is no file open with addFileOpen(), else TRUE.
+   */
+  public function addFileWrite($block) {
+    if ($this->isFinalized || !$this->isFileOpen) {
+      return FALSE;
+    }
+
+    list($this->dataLength, $this->gzLength, $this->dataCRC32) =
+      $this->writeFile($block, $this->addFileOptions['compress'], $this->addFileOptions['level']);
+
+    return TRUE;
+  }
+
+  /**
+   * Close the file in the archive.
+   *
+   * @return bool $success
+   */
+  public function addFileClose() {
+    if ($this->isFinalized || !$this->isFileOpen) {
+      return FALSE;
+    }
+
+    if (COMPR::DEFLATE === $compress) {
+      $data = $this->compStream->finish();
+      unset($this->compStream);
+
+      $this->gzLength->add(strlen($data));
+      $this->write($data);
+    }
+    $this->flush();
+
+    $ddLength = $this->addDataDescriptor($this->dataLength, $this->gzLength, $this->dataCRC32);
+
+    // build cdRec
+    $this->cdRec[] =
+      $this->buildCentralDirectoryHeader($filePath, $this->addFileOptions['timestamp'],
+                                         $this->gpFlags, $this->addFileOptions['compress'],
+                                         $this->dataLength, $this->gzLength,
+                                         $this->dataCRC32, $this->extFileAttrFile, FALSE);
+
+    // calc offset
+    $this->offset->add($ddLength)->add($this->lfhLength)->add($this->gzLength);
+    $this->isFileOpen = FALSE;
+    return TRUE;
+  }
+
+  /**
+   * Add a file to the archive at the specified location and file name.
+   *
+   * @param string $data
+   *   The (complete) contents of the file.
+   * @param string $filePath
+   *   Filepath and name to be used in the archive.
+   * @param array $options Optional, additional options
+   *   Valid options are:
+   *    * int timestamp: timestamp for the file (default: current time)
+   *    * string comment: comment to be added for this file (default: none)
+   *    * it compress: compression method (override global option for this file)
+   *    * nt level: compression level (override global option for this file)
+   * @return bool $success
+   */
+  public function addFileFromString($data, $filePath, $options = NULL) {
+    if ($this->isFinalized) {
+      return FALSE;
+    }
+    $defaultOptions = array(
+      'timestamp' => NULL,
+      'comment' => NULL,
+      'compress' => $this->compress,
+      'level' => $this->level,
+    );
+    if (is_null($options)) {
+      $options = array();
+    }
+    $options = array_merge($defaultOptions, $options);
+    $this->validateCompressionOptions($options['compress'], $options['level']);
+
+    if (!is_string($data)) {
+      return FALSE;
+    }
+
+    $this->filePath = self::normalizeFilePath($filePath);
+    $this->gpFlags = GPFLAGS::ADD;
+
+    $this->dataLength = Count64::construct(0, !$this->zip64);
+    $this->gzLength = Count64::construct(0, !$this->zip64);
+    $this->lfhLength = Count64::construct(0, !$this->zip64);
+    $this->dataCRC32 = hexdec(hash('crc32b', $data));
+    if (COMPR::DEFLATE === $options['compress']) {
+      $compStream = DeflateStream::create($options['level']);
+    }
+
+    $this->dataLength->add(strlen($data));
+    if (COMPR::DEFLATE === $options['compress']) {
+      $data = $compStream->update($data);
+    }
+    $this->gzLength->add(strlen($data));
+
+    list($this->gpFlags, $this->lfhLength) = $this->beginFile($this->filePath, FALSE,
+                                                        $options['comment'], $options['timestamp'],
+                                                        $this->gpFlags, $options['compress'],
+                                                        $this->dataLength, $this->gzLength, $this->dataCRC32);
+
+    $this->write($data);
+
+    if (COMPR::DEFLATE === $options['compress']) {
+      $data = $compStream->finish();
+      $this->gzLength->add(strlen($data));
+      $this->write($data);
+    }
+    $this->flush();
+
+    // build cdRec
+    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $options['timestamp'],
+                                                        $this->gpFlags, $options['compress'],
+                                                        $this->dataLength, $this->gzLength, $this->dataCRC32,
+                                                        $this->extFileAttrFile, FALSE);
+
+    // calc offset
+    $this->offset->add($this->lfhLength)->add($this->gzLength);
+
+    return TRUE;
   }
 
   /**
@@ -262,10 +449,12 @@ class ZipStreamer {
       $gpFlags = 0x0000;
       $gzMethod = COMPR::STORE; // Compression type 0 = stored
 
-      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, True, $options['comment'], $options['timestamp'], $gpFlags, $gzMethod);
+      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, TRUE,
+                                                    $options['comment'], $options['timestamp'],
+                                                    $gpFlags, $gzMethod);
       // build cdRec
       $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $options['timestamp'], $gpFlags, $gzMethod,
-          Count64::construct(0, !$this->zip64), Count64::construct(0, !$this->zip64), 0, $this->extFileAttrDir, True);
+                                                          Count64::construct(0, !$this->zip64), Count64::construct(0, !$this->zip64), 0, $this->extFileAttrDir, TRUE);
 
       // calc offset
       $this->offset->add($lfhLength);
@@ -339,7 +528,7 @@ class ZipStreamer {
   }
 
   private function beginFile($filePath, $isDir, $fileComment, $timestamp, $gpFlags, $gzMethod,
-      $dataLength = 0, $gzLength = 0, $dataCRC32 = 0) {
+                             $dataLength = 0, $gzLength = 0, $dataCRC32 = 0) {
 
     $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
     $isCommentUTF8 = !empty($fileComment) && mb_check_encoding($fileComment, 'UTF-8')
@@ -349,12 +538,25 @@ class ZipStreamer {
       $gpFlags |= GPFLAGS::EFS;
     }
 
-    $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp, $gpFlags, $gzMethod, $dataLength,
-        $gzLength, $isDir, $dataCRC32);
+    $localFileHeader = $this->buildLocalFileHeader($filePath, $timestamp,
+                                                   $gpFlags, $gzMethod, $dataLength,
+                                                   $gzLength, $isDir, $dataCRC32);
 
     $this->write($localFileHeader);
 
     return array($gpFlags, strlen($localFileHeader));
+  }
+
+  private function writeFile($data, $compress, $level) {
+
+    $this->dataLength->add(strlen($data));
+    hash_update($this->hashCtx, $data);
+    if (COMPR::DEFLATE === $compress) {
+      $data = $this->compStream->update($data);
+    }
+    $this->gzLength->add(strlen($data));
+    $this->write($data);
+
   }
 
   private function streamFileData($stream, $compress, $level) {
@@ -398,15 +600,20 @@ class ZipStreamer {
   }
 
   private function buildLocalFileHeader($filePath, $timestamp, $gpFlags,
-      $gzMethod, $dataLength, $gzLength, $isDir = False, $dataCRC32 = 0) {
+                                        $gzMethod, $dataLength, $gzLength, $isDir = FALSE, $dataCRC32 = 0) {
     $versionToExtract = $this->getVersionToExtract($isDir);
     $dosTime = self::getDosTime($timestamp);
     if ($this->zip64) {
       $zip64Ext = $this->buildZip64ExtendedInformationField($dataLength, $gzLength);
       $dataLength = -1;
       $gzLength = -1;
-    } else {
+      $offset = -1;
+    }
+    else {
       $zip64Ext = '';
+      $dataLength = is_numeric($dataLength) ? $dataLength : $dataLength->getLoBytes();
+      $gzLength = is_numeric($gzLength) ? $gzLength : $gzLength->getLoBytes();
+      $offset = $this->offset->getLoBytes();
     }
 
     return ''
@@ -469,7 +676,8 @@ class ZipStreamer {
   }
 
   private function buildZip64EndOfCentralDirectoryLocator($cdRecLength) {
-    $zip64RecStart = Count64::construct($this->offset, !$this->zip64)->add($cdRecLength);
+    $zip64RecStart = Count64::construct($this->offset, !$this->zip64)
+                            ->add($cdRecLength);
 
         return ''
         . pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
@@ -481,7 +689,8 @@ class ZipStreamer {
   }
 
   private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
-      $gzMethod, $dataLength, $gzLength, $dataCRC32, $extFileAttr, $isDir) {
+                                               $gzMethod, $dataLength, $gzLength, $dataCRC32,
+                                               $extFileAttr, $isDir) {
     $versionToExtract = $this->getVersionToExtract($isDir);
     $dosTime = self::getDosTime($timestamp);
     if ($this->zip64) {

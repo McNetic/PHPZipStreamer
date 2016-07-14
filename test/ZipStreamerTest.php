@@ -405,6 +405,44 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $this->assertOutputZipfileOK($files, $options);
   }
 
+  /**
+   * @dataProvider providerZipfileOK
+   */
+  public function testZipfileString($options, $files, $description) {
+    $options = array_merge($options, array('outstream' => $this->outstream));
+    $zip = new ZipStreamer($options);
+    foreach ($files as $file) {
+      if (File::DIR == $file->type) {
+        $zip->addEmptyDir($file->filename, array('timestamp' => $file->date));
+      } else {
+        $zip->addFileFromString($file->data, $file->filename, array('timestamp' => $file->date));
+      }
+    }
+    $zip->finalize();
+
+    $this->assertOutputZipfileOK($files, $options);
+  }
+
+  /**
+   * @dataProvider providerZipfileOK
+   */
+  public function testZipfileStreamed($options, $files, $description) {
+    $options = array_merge($options, array('outstream' => $this->outstream));
+    $zip = new ZipStreamer($options);
+    foreach ($files as $file) {
+      if (File::DIR == $file->type) {
+        $zip->addEmptyDir($file->filename, array('timestamp' => $file->date));
+      } else {
+        $zip->addFileOpen($file->filename, array('timestamp' => $file->date));
+        $zip->addFileWrite($file->data);
+        $zip->addFileClose();
+      }
+    }
+    $zip->finalize();
+
+    $this->assertOutputZipfileOK($files, $options);
+  }
+
   /** https://github.com/McNetic/PHPZipStreamer/issues/29
   *  ZipStreamer produces an error when the size of a file to be added is a
   *   multiple of the STREAM_CHUNK_SIZE (also for empty files)
