@@ -65,7 +65,7 @@ abstract class zipRecord {
     try {
       $eocdrec->readFromString($str, $pos, $size);
     } catch (Exception $e) {
-      $this->fail("error parsing end of central directory record");
+      self::fail("error parsing end of central directory record");
     }
 
     return $eocdrec;
