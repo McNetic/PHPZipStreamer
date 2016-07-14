@@ -182,6 +182,49 @@ Add a file to the archive at the specified location and file name.
 bool Success
 
 ```
+addFileOpen(string $filePath, array $options) : bool
+```
+
+Start the process of adding a file chunk by chunk.
+
+This call must be followed by 0 or more calls to addFileWrite(), and then one 
+call to addFileClose(). There is no support for multiple simultaneously active
+files.
+
+######Parameters
+* string *$filePath* Filepath and name to be used in the archive.
+* array *options* (optional) additional options. Valid options are:
+    * int *$timestamp* Timestamp for the file (default: current time)
+    * string *$comment* comment to be added for this file (default: none)
+    * int *compress*: compression method (override global option for this
+    file)
+    * int *level*: compression level (override global option for this file)
+
+######Returns
+bool Success
+
+```
+addFileWrite(string $data) : bool
+```
+
+Append more data to a file being written by addFileOpen().
+
+######Parameters
+* string *$data* The file contents to store.
+
+######Returns
+bool Success
+
+```
+addFileClose() : bool
+```
+
+Close a file being written by addFileOpen() and append relevant metadata.
+
+######Returns
+bool Success
+
+```
 addEmptyDir(string $directoryPath, array $options) : bool
 ```
 
