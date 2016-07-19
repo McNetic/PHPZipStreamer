@@ -1,5 +1,5 @@
 {
-  "name": "mcnetic/zipstreamer",
+  "name": "rivimey/zipstreamer",
   "type": "library",
   "description": "Stream zip files without i/o overhead",
   "keywords": ["zip", "stream"],
@@ -25,7 +25,7 @@
   ],
   "repositories": [ {
       "type": "vcs",
-      "url": "https://github.com/McNetic/PHPZipStreamer"
+      "url": "https://github.com/rivimey/PHPZipStreamer"
     }
   ],
   "require": {
@@ -39,7 +39,7 @@
   },
   "autoload": {
     "psr-4": {
-      "ZipStreamer\\": "src/"
+      "ZipStreamer": "src/"
     }
   }
 }
