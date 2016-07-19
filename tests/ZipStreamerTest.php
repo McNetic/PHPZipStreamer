@@ -6,30 +6,22 @@
  * This file is licensed under the GNU GPL version 3 or later.
  * See COPYING for details.
  */
-namespace ZipStreamer;
+namespace Rivimey\ZipStreamer\Tests;
 
-require "src/ZipStreamer.php";
-require "test/ZipComponents.php";
+use Rivimey\ZipStreamer;
+use Rivimey\ZipStreamer\Count64\PackBits;
+use Rivimey\ZipStreamer\DOS;
+use Rivimey\ZipStreamer\UNIX;
+use Rivimey\ZipStreamer\GPFLAGS;
+use Rivimey\ZipStreamer\Count64\Count64;
+use Rivimey\ZipStreamer\Count64\Count64_32;
+use Rivimey\ZipStreamer\Count64\Count64_64;
+use Rivimey\ZipStreamer\Deflate\COMPR;
+use Rivimey\ZipStreamer\Deflate\DeflateStream;
+use Rivimey\ZipStreamer\Deflate\DeflatePeclStream;
+use Rivimey\ZipStreamer\Deflate\DeflateStoreStream;
 
-class File {
-  const FILE = 1;
-  const DIR = 2;
-  public $filename;
-  public $date;
-  public $type;
-  public $data;
-
-  public function __construct($filename, $type, $date, $data = "") {
-    $this->filename = $filename;
-    $this->type = $type;
-    $this->date = $date;
-    $this->data = $data;
-  }
-
-  public function getSize() {
-    return strlen($this->data);
-  }
-}
+require "tests/ZipComponents.php";
 
 class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   const ATTR_MADE_BY_VERSION = 0x032d; // made by version (upper byte: UNIX, lower byte v4.5)
@@ -110,8 +102,8 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $this->assertEquals($z64eocdrec->end + 1, $z64eocdloc->begin, "Z64EOCDR directly before Z64EOCDL");
       $z64eocdrec->assertValues(array(
           "size" => Count64::construct(44),
-          "madeByVersion" => pack16le(self::ATTR_MADE_BY_VERSION),
-          "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], False)),
+          "madeByVersion" => PackBits::pack16le(self::ATTR_MADE_BY_VERSION),
+          "versionToExtract" => PackBits::pack16le($this->getVersionToExtract($options['zip64'], False)),
           "numberDisk" => 0,
           "numberDiskStartCDR" => 0,
           "numberEntriesDisk" => Count64::construct(sizeof($files)),
@@ -146,15 +138,15 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
 
       $this->assertArrayHasKey($filename, $files, "CDH entry has valid name");
       $cdhead->assertValues(array(
-          "madeByVersion" => pack16le(self::ATTR_MADE_BY_VERSION),
-          "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
-          "gpFlags" => (File::FILE == $files[$filename]->type ? pack16le(GPFLAGS::ADD) : pack16le(GPFLAGS::NONE)),
-          "gzMethod" => (File::FILE == $files[$filename]->type ? pack16le($options['compress']) : pack16le(COMPR::STORE)),
-          "dosTime" => pack32le(ZipStreamer::getDosTime($files[$filename]->date)),
+          "madeByVersion" => PackBits::pack16le(self::ATTR_MADE_BY_VERSION),
+          "versionToExtract" => PackBits::pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
+          "gpFlags" => (File::FILE == $files[$filename]->type ? PackBits::pack16le(GPFLAGS::ADD) : PackBits::pack16le(GPFLAGS::NONE)),
+          "gzMethod" => (File::FILE == $files[$filename]->type ? PackBits::pack16le($options['compress']) : PackBits::pack16le(COMPR::STORE)),
+          "dosTime" => PackBits::pack32le(ZipStreamer\ZipStreamer::getDosTime($files[$filename]->date)),
           "lengthFilename" => strlen($filename),
           "lengthComment" => 0,
-          "fileAttrInternal" => pack16le(0x0000),
-          "fileAttrExternal" => (File::FILE == $files[$filename]->type ? pack32le(self::EXT_FILE_ATTR_FILE) : pack32le(self::EXT_FILE_ATTR_DIR))
+          "fileAttrInternal" => PackBits::pack16le(0x0000),
+          "fileAttrExternal" => (File::FILE == $files[$filename]->type ? PackBits::pack32le(self::EXT_FILE_ATTR_FILE) : PackBits::pack32le(self::EXT_FILE_ATTR_DIR))
       ));
       if ($options['zip64']) {
         $cdhead->assertValues(array(
@@ -205,32 +197,66 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       if (GPFLAGS::ADD & $file->lfh->gpFlags) {
         $this->assertNotNull($file->dd, "data descriptor present (flag ADD set)");
       }
-      if ($options['zip64']) {
+      // Flag fileheader_nonzero is set by test harness when we expect lfh to
+      // have size & crc values, rather than zeros with a following DataDescriptor.
+      if (isset($options['fileheader_nonzero']) && $options['fileheader_nonzero']) {
+        if ($options['zip64']) {
+          // if zip64, the 32 bit headers are unused:
+          $file->lfh->assertValues(array(
+                 "sizeCompressed" => 0xffffffff,
+                 "size" => 0xffffffff,
+               ));
+          // The 64 bit headers
+          $file->lfh->z64Ext->assertValues(array(
+                 "sizeField" => 28,
+                 "diskNumberStart" => 0
+               ));
+          $this->assertGreaterThan(0, $file->lfh->z64Ext->size->getLoBytes());
+          $this->assertGreaterThan(0, $file->lfh->z64Ext->sizeCompressed->getLoBytes());
+        }
+        else {
+          // if 32 bit headers, it's easier:
+          $this->assertGreaterThan(0, $file->lfh->size);
+          $this->assertGreaterThan(0, $file->lfh->sizeCompressed);
+        }
         $file->lfh->assertValues(array(
-            "sizeCompressed" => 0xffffffff,
-            "size" => 0xffffffff,
-        ));
-        $file->lfh->z64Ext->assertValues(array(
-            "sizeField" => 28,
-            "size" => Count64::construct(0),
-            "sizeCompressed" => Count64::construct(0),
-            "diskNumberStart" => 0
-        ));
-      } else {
-        $file->lfh->assertValues(array(
-            "sizeCompressed" => 0,
-            "size" => 0,
-        ));
+               "versionToExtract" => PackBits::pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
+               "gpFlags" => (File::FILE == $files[$filename]->type ? GPFLAGS::ADD : GPFLAGS::NONE),
+               "gzMethod" => (File::FILE == $files[$filename]->type ? $options['compress'] : COMPR::STORE),
+               "dosTime" => PackBits::pack32le(ZipStreamer\ZipStreamer::getDosTime($files[$filename]->date)),
+               "lengthFilename" => strlen($filename),
+               "filename" => $filename
+             ));
       }
-      $file->lfh->assertValues(array(
-          "versionToExtract" => pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
-          "gpFlags" => (File::FILE == $files[$filename]->type ? GPFLAGS::ADD : GPFLAGS::NONE),
-          "gzMethod" => (File::FILE == $files[$filename]->type ? $options['compress'] : COMPR::STORE),
-          "dosTime" => pack32le(ZipStreamer::getDosTime($files[$filename]->date)),
-          "dataCRC32" => 0x0000,
-          "lengthFilename" => strlen($filename),
-          "filename" => $filename
-      ));
+      else {
+        if ($options['zip64']) {
+          $file->lfh->assertValues(array(
+                 "sizeCompressed" => 0xffffffff,
+                 "size" => 0xffffffff,
+               ));
+          $file->lfh->z64Ext->assertValues(array(
+                 "sizeField" => 28,
+                 "size" => Count64::construct(0),
+                 "sizeCompressed" => Count64::construct(0),
+                 "diskNumberStart" => 0
+               ));
+        }
+        else {
+          $file->lfh->assertValues(array(
+               "sizeCompressed" => 0,
+               "size" => 0,
+             ));
+        }
+        $file->lfh->assertValues(array(
+               "versionToExtract" => PackBits::pack16le($this->getVersionToExtract($options['zip64'], File::DIR == $files[$filename]->type)),
+               "gpFlags" => (File::FILE == $files[$filename]->type ? GPFLAGS::ADD : GPFLAGS::NONE),
+               "gzMethod" => (File::FILE == $files[$filename]->type ? $options['compress'] : COMPR::STORE),
+               "dosTime" => PackBits::pack32le(ZipStreamer\ZipStreamer::getDosTime($files[$filename]->date)),
+               "dataCRC32" => 0x0000,
+               "lengthFilename" => strlen($filename),
+               "filename" => $filename
+             ));
+      }
 
       $endLastFile = $file->end;
       $first = False;
@@ -308,7 +334,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
                                                       $description,
                                                       $browser,
                                                       $expectedDisposition) {
-    $zip = new ZipStreamer(array(
+    $zip = new ZipStreamer\ZipStreamer(array(
         'outstream' => $this->outstream
     ));
     $_SERVER['HTTP_USER_AGENT'] = $browser;
@@ -388,7 +414,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
    */
   public function testZipfile($options, $files, $description) {
     $options = array_merge($options, array('outstream' => $this->outstream));
-    $zip = new ZipStreamer($options);
+    $zip = new ZipStreamer\ZipStreamer($options);
     foreach ($files as $file) {
       if (File::DIR == $file->type) {
         $zip->addEmptyDir($file->filename, array('timestamp' => $file->date));
@@ -402,6 +428,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     }
     $zip->finalize();
 
+    $options['fileheader_nonzero'] = FALSE;
     $this->assertOutputZipfileOK($files, $options);
   }
 
@@ -410,7 +437,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
    */
   public function testZipfileString($options, $files, $description) {
     $options = array_merge($options, array('outstream' => $this->outstream));
-    $zip = new ZipStreamer($options);
+    $zip = new ZipStreamer\ZipStreamer($options);
     foreach ($files as $file) {
       if (File::DIR == $file->type) {
         $zip->addEmptyDir($file->filename, array('timestamp' => $file->date));
@@ -420,6 +447,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     }
     $zip->finalize();
 
+    $options['fileheader_nonzero'] = TRUE;
     $this->assertOutputZipfileOK($files, $options);
   }
 
@@ -428,7 +456,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
    */
   public function testZipfileStreamed($options, $files, $description) {
     $options = array_merge($options, array('outstream' => $this->outstream));
-    $zip = new ZipStreamer($options);
+    $zip = new ZipStreamer\ZipStreamer($options);
     foreach ($files as $file) {
       if (File::DIR == $file->type) {
         $zip->addEmptyDir($file->filename, array('timestamp' => $file->date));
@@ -440,6 +468,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     }
     $zip->finalize();
 
+    $options['fileheader_nonzero'] = FALSE;
     $this->assertOutputZipfileOK($files, $options);
   }
 
@@ -449,7 +478,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   */
   public function testIssue29() {
     $options = array('zip64' => True,'compress' => COMPR::DEFLATE, 'outstream' => $this->outstream);
-    $zip = new ZipStreamer($options);
+    $zip = new ZipStreamer\ZipStreamer($options);
     $stream = fopen('php://memory', 'r+');
     $zip->addFileFromStream($stream, "test.bin");
     fclose($stream);

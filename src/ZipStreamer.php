@@ -25,25 +25,23 @@
  *
  * @author Nicolai Ehemann <en@enlightened.de>
  * @author André Rothe <arothe@zks.uni-leipzig.de>
- * @copyright Copyright (C) 2013-2015 Nicolai Ehemann and contributors
+ * @author Ruth Ivimey-Cook <ruth@ivimey.org>
+ * @copyright Copyright (C) 2013-2016 Ruth Ivimey-Cook, Nicolai Ehemann and contributors
  * @license GNU GPL
- * @version 1.0
+ * @version 2.0
  */
-namespace ZipStreamer;
+namespace Rivimey\ZipStreamer;
 
-require "lib/Count64.php";
-
-class COMPR {
-  // compression method
-  const STORE = 0x0000; //  0 - The file is stored (no compression)
-  const DEFLATE = 0x0008; //  8 - The file is deflated
-
-  // compression level (for deflate compression)
-  const NONE = 0;
-  const NORMAL = 1;
-  const MAXIMUM = 2;
-  const SUPERFAST = 3;
-}
+use Rivimey\ZipStreamer\Count64\PackBits;
+use Rivimey\ZipStreamer\DOS;
+use Rivimey\ZipStreamer\UNIX;
+use Rivimey\ZipStreamer\Count64\Count64;
+use Rivimey\ZipStreamer\Count64\Count64_32;
+use Rivimey\ZipStreamer\Count64\Count64_64;
+use Rivimey\ZipStreamer\Deflate\COMPR;
+use Rivimey\ZipStreamer\Deflate\DeflateStream;
+use Rivimey\ZipStreamer\Deflate\DeflatePeclStream;
+use Rivimey\ZipStreamer\Deflate\DeflateStoreStream;
 
 class ZipStreamer {
   const VERSION = "1.0";
@@ -77,6 +75,9 @@ class ZipStreamer {
   /** @var boolean indicates zip is finalized and sent to client; no further addition possible */
   private $isFinalized = false;
 
+  /*
+   * These values are used to persist state during addFileOpen/Write/Close.
+   */
   private $isFileOpen = FALSE;
   private $hashCtx = FALSE;
   private $filePath;
@@ -282,7 +283,7 @@ class ZipStreamer {
     }
 
     list($this->gpFlags, $this->lfhLength) =
-      $this->beginFile($filePath, FALSE,
+      $this->beginFile($this->filePath, FALSE,
                        $this->addFileOptions['comment'], $this->addFileOptions['timestamp'],
                        $this->gpFlags, $this->addFileOptions['compress'],
                        0, 0, 0);
@@ -301,9 +302,7 @@ class ZipStreamer {
     if ($this->isFinalized || !$this->isFileOpen) {
       return FALSE;
     }
-
-    list($this->dataLength, $this->gzLength, $this->dataCRC32) =
-      $this->writeFile($block, $this->addFileOptions['compress'], $this->addFileOptions['level']);
+    $this->writeFile($block, $this->addFileOptions['compress'], $this->addFileOptions['level']);
 
     return TRUE;
   }
@@ -318,7 +317,7 @@ class ZipStreamer {
       return FALSE;
     }
 
-    if (COMPR::DEFLATE === $compress) {
+    if (COMPR::DEFLATE === $this->addFileOptions['compress']) {
       $data = $this->compStream->finish();
       unset($this->compStream);
 
@@ -326,12 +325,13 @@ class ZipStreamer {
       $this->write($data);
     }
     $this->flush();
+    $this->dataCRC32 = unpack('N', hash_final($this->hashCtx, true));
 
     $ddLength = $this->addDataDescriptor($this->dataLength, $this->gzLength, $this->dataCRC32);
 
     // build cdRec
     $this->cdRec[] =
-      $this->buildCentralDirectoryHeader($filePath, $this->addFileOptions['timestamp'],
+      $this->buildCentralDirectoryHeader($this->filePath, $this->addFileOptions['timestamp'],
                                          $this->gpFlags, $this->addFileOptions['compress'],
                                          $this->dataLength, $this->gzLength,
                                          $this->dataCRC32, $this->extFileAttrFile, FALSE);
@@ -591,12 +591,12 @@ class ZipStreamer {
 
   private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0) {
     return ''
-      . pack16le(0x0001)         // tag for this "extra" block type (ZIP64)        2 bytes (0x0001)
-      . pack16le(28)             // size of this "extra" block                     2 bytes
-      . pack64le($dataLength)    // original uncompressed file size                8 bytes
-      . pack64le($gzLength)      // size of compressed data                        8 bytes
-      . pack64le($this->offset)  // offset of local header record                  8 bytes
-      . pack32le(0);             // number of the disk on which this file starts   4 bytes
+      . PackBits::pack16le(0x0001)         // tag for this "extra" block type (ZIP64)        2 bytes (0x0001)
+      . PackBits::pack16le(28)             // size of this "extra" block                     2 bytes
+      . PackBits::pack64le($dataLength)    // original uncompressed file size                8 bytes
+      . PackBits::pack64le($gzLength)      // size of compressed data                        8 bytes
+      . PackBits::pack64le($this->offset)  // offset of local header record                  8 bytes
+      . PackBits::pack32le(0);             // number of the disk on which this file starts   4 bytes
   }
 
   private function buildLocalFileHeader($filePath, $timestamp, $gpFlags,
@@ -617,34 +617,34 @@ class ZipStreamer {
     }
 
     return ''
-      . pack32le(self::ZIP_LOCAL_FILE_HEADER)   // local file header signature     4 bytes  (0x04034b50)
-      . pack16le($versionToExtract)             // version needed to extract       2 bytes
-      . pack16le($gpFlags)                      // general purpose bit flag        2 bytes
-      . pack16le($gzMethod)                     // compression method              2 bytes
-      . pack32le($dosTime)                      // last mod file time              2 bytes
-                                                // last mod file date              2 bytes
-      . pack32le($dataCRC32)                    // crc-32                          4 bytes
-      . pack32le($gzLength)                     // compressed size                 4 bytes
-      . pack32le($dataLength)                   // uncompressed size               4 bytes
-      . pack16le(strlen($filePath))             // file name length                2 bytes
-      . pack16le(strlen($zip64Ext))             // extra field length              2 bytes
-      . $filePath                               // file name                       (variable size)
-      . $zip64Ext;                              // extra field                     (variable size)
+      . PackBits::pack32le(self::ZIP_LOCAL_FILE_HEADER)   // local file header signature     4 bytes  (0x04034b50)
+      . PackBits::pack16le($versionToExtract)             // version needed to extract       2 bytes
+      . PackBits::pack16le($gpFlags)                      // general purpose bit flag        2 bytes
+      . PackBits::pack16le($gzMethod)                     // compression method              2 bytes
+      . PackBits::pack32le($dosTime)                      // last mod file time              2 bytes
+                                                          // last mod file date              2 bytes
+      . PackBits::pack32le($dataCRC32)                    // crc-32                          4 bytes
+      . PackBits::pack32le($gzLength)                     // compressed size                 4 bytes
+      . PackBits::pack32le($dataLength)                   // uncompressed size               4 bytes
+      . PackBits::pack16le(strlen($filePath))             // file name length                2 bytes
+      . PackBits::pack16le(strlen($zip64Ext))             // extra field length              2 bytes
+      . $filePath                                         // file name                       (variable size)
+      . $zip64Ext;                                        // extra field                     (variable size)
   }
 
   private function addDataDescriptor($dataLength, $gzLength, $dataCRC32) {
     if ($this->zip64) {
       $length = 20;
-      $packedGzLength = pack64le($gzLength);
-      $packedDataLength = pack64le($dataLength);
+      $packedGzLength = PackBits::pack64le($gzLength);
+      $packedDataLength = PackBits::pack64le($dataLength);
     } else {
       $length = 12;
-      $packedGzLength = pack32le($gzLength->getLoBytes());
-      $packedDataLength = pack32le($dataLength->getLoBytes());
+      $packedGzLength = PackBits::pack32le($gzLength->getLoBytes());
+      $packedDataLength = PackBits::pack32le($dataLength->getLoBytes());
      }
 
     $this->write(''
-        . pack32le($dataCRC32)  // crc-32                          4 bytes
+        . PackBits::pack32le($dataCRC32)  // crc-32                          4 bytes
         . $packedGzLength       // compressed size                 4/8 bytes (depending on zip64 enabled)
         . $packedDataLength     // uncompressed size               4/8 bytes (depending on zip64 enabled)
         .'');
@@ -656,22 +656,22 @@ class ZipStreamer {
     $cdRecCount = sizeof($this->cdRec);
 
     return ''
-        . pack32le(self::ZIP64_END_OF_CENTRAL_DIRECTORY) // zip64 end of central dir signature         4 bytes  (0x06064b50)
-        . pack64le(44)                                   // size of zip64 end of central directory
-                                                         // record                                     8 bytes
-        . pack16le(self::ATTR_MADE_BY_VERSION)           //version made by                             2 bytes
-        . pack16le($versionToExtract)                    // version needed to extract                  2 bytes
-        . pack32le(0)                                    // number of this disk                        4 bytes
-        . pack32le(0)                                    // number of the disk with the start of the
-                                                         // central directory                          4 bytes
-        . pack64le($cdRecCount)                          // total number of entries in the central
-                                                         // directory on this disk                     8 bytes
-        . pack64le($cdRecCount)                          // total number of entries in the
-                                                         // central directory                          8 bytes
-        . pack64le($cdRecLength)                         // size of the central directory              8 bytes
-        . pack64le($this->offset)                        // offset of start of central directory
-                                                         // with respect to the starting disk number   8 bytes
-        . '';                                            // zip64 extensible data sector               (variable size)
+        . PackBits::pack32le(self::ZIP64_END_OF_CENTRAL_DIRECTORY) // zip64 end of central dir signature         4 bytes  (0x06064b50)
+        . PackBits::pack64le(44)                                   // size of zip64 end of central directory
+                                                                   // record                                     8 bytes
+        . PackBits::pack16le(self::ATTR_MADE_BY_VERSION)           //version made by                             2 bytes
+        . PackBits::pack16le($versionToExtract)                    // version needed to extract                  2 bytes
+        . PackBits::pack32le(0)                                    // number of this disk                        4 bytes
+        . PackBits::pack32le(0)                                    // number of the disk with the start of the
+                                                                   // central directory                          4 bytes
+        . PackBits::pack64le($cdRecCount)                          // total number of entries in the central
+                                                                   // directory on this disk                     8 bytes
+        . PackBits::pack64le($cdRecCount)                          // total number of entries in the
+                                                                   // central directory                          8 bytes
+        . PackBits::pack64le($cdRecLength)                         // size of the central directory              8 bytes
+        . PackBits::pack64le($this->offset)                        // offset of start of central directory
+                                                                   // with respect to the starting disk number   8 bytes
+        . '';                                                      // zip64 extensible data sector               (variable size)
 
   }
 
@@ -680,12 +680,12 @@ class ZipStreamer {
                             ->add($cdRecLength);
 
         return ''
-        . pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
-        . pack32le(0)                                      // number of the disk with the start of the
-                                                           // zip64 end of central directory              4 bytes
-        . pack64le($zip64RecStart)                         // relative offset of the zip64 end of
-                                                           // central directory record                    8 bytes
-        . pack32le(1);                                     // total number of disks                       4 bytes
+        . PackBits::pack32le(self::ZIP64_END_OF_CENTRAL_DIR_LOCATOR) // zip64 end of central dir locator signature  4 bytes  (0x07064b50)
+        . PackBits::pack32le(0)                                      // number of the disk with the start of the
+                                                                     // zip64 end of central directory              4 bytes
+        . PackBits::pack64le($zip64RecStart)                         // relative offset of the zip64 end of
+                                                                     // central directory record                    8 bytes
+        . PackBits::pack32le(1);                                     // total number of disks                       4 bytes
   }
 
   private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
@@ -708,23 +708,23 @@ class ZipStreamer {
     }
 
     return ''
-      . pack32le(self::ZIP_CENTRAL_FILE_HEADER)  //central file header signature   4 bytes  (0x02014b50)
-      . pack16le(self::ATTR_MADE_BY_VERSION)     //version made by                 2 bytes
-      . pack16le($versionToExtract)              // version needed to extract      2 bytes
-      . pack16le($gpFlags)                       //general purpose bit flag        2 bytes
-      . pack16le($gzMethod)                      //compression method              2 bytes
-      . pack32le($dosTime)                       //last mod file time              2 bytes
-                                                 //last mod file date              2 bytes
-      . pack32le($dataCRC32)                     //crc-32                          4 bytes
-      . pack32le($gzLength)                      //compressed size                 4 bytes
-      . pack32le($dataLength)                    //uncompressed size               4 bytes
-      . pack16le(strlen($filePath))              //file name length                2 bytes
-      . pack16le(strlen($zip64Ext))              //extra field length              2 bytes
-      . pack16le(0)                              //file comment length             2 bytes
-      . pack16le($diskNo)                        //disk number start               2 bytes
-      . pack16le(0)                              //internal file attributes        2 bytes
-      . pack32le($extFileAttr)                   //external file attributes        4 bytes
-      . pack32le($offset)                        //relative offset of local header 4 bytes
+      . PackBits::pack32le(self::ZIP_CENTRAL_FILE_HEADER)  //central file header signature   4 bytes  (0x02014b50)
+      . PackBits::pack16le(self::ATTR_MADE_BY_VERSION)     //version made by                 2 bytes
+      . PackBits::pack16le($versionToExtract)              // version needed to extract      2 bytes
+      . PackBits::pack16le($gpFlags)                       //general purpose bit flag        2 bytes
+      . PackBits::pack16le($gzMethod)                      //compression method              2 bytes
+      . PackBits::pack32le($dosTime)                       //last mod file time              2 bytes
+                                                           //last mod file date              2 bytes
+      . PackBits::pack32le($dataCRC32)                     //crc-32                          4 bytes
+      . PackBits::pack32le($gzLength)                      //compressed size                 4 bytes
+      . PackBits::pack32le($dataLength)                    //uncompressed size               4 bytes
+      . PackBits::pack16le(strlen($filePath))              //file name length                2 bytes
+      . PackBits::pack16le(strlen($zip64Ext))              //extra field length              2 bytes
+      . PackBits::pack16le(0)                              //file comment length             2 bytes
+      . PackBits::pack16le($diskNo)                        //disk number start               2 bytes
+      . PackBits::pack16le(0)                              //internal file attributes        2 bytes
+      . PackBits::pack32le($extFileAttr)                   //external file attributes        4 bytes
+      . PackBits::pack32le($offset)                        //relative offset of local header 4 bytes
       . $filePath                                //file name                       (variable size)
       . $zip64Ext                                //extra field                     (variable size)
       //TODO: implement?
@@ -745,21 +745,21 @@ class ZipStreamer {
     //throw new \Exception(sprintf("zip64 %d diskno %d", $this->zip64, $diskNumber));
 
     return ''
-      . pack32le(self::ZIP_END_OF_CENTRAL_DIRECTORY) // end of central dir signature    4 bytes  (0x06064b50)
-      . pack16le($diskNumber)                        // number of this disk             2 bytes
-      . pack16le($diskNumber)                        // number of the disk with the
-                                                     // start of the central directory  2 bytes
-      . pack16le($cdRecCount)                        // total number of entries in the
-                                                     // central directory on this disk  2 bytes
-      . pack16le($cdRecCount)                        // total number of entries in the
-                                                     // central directory               2 bytes
-      . pack32le($cdRecLength)                       // size of the central directory   4 bytes
-      . pack32le($offset)                            // offset of start of central
-                                                     // directory with respect to the
-                                                     // starting disk number            4 bytes
-      . pack16le(0)                                  // .ZIP file comment length        2 bytes
+      . PackBits::pack32le(self::ZIP_END_OF_CENTRAL_DIRECTORY) // end of central dir signature    4 bytes  (0x06064b50)
+      . PackBits::pack16le($diskNumber)                        // number of this disk             2 bytes
+      . PackBits::pack16le($diskNumber)                        // number of the disk with the
+                                                               // start of the central directory  2 bytes
+      . PackBits::pack16le($cdRecCount)                        // total number of entries in the
+                                                               // central directory on this disk  2 bytes
+      . PackBits::pack16le($cdRecCount)                        // total number of entries in the
+                                                               // central directory               2 bytes
+      . PackBits::pack32le($cdRecLength)                       // size of the central directory   4 bytes
+      . PackBits::pack32le($offset)                            // offset of start of central
+                                                               // directory with respect to the
+                                                               // starting disk number            4 bytes
+      . PackBits::pack16le(0)                                  // .ZIP file comment length        2 bytes
       //TODO: implement?
-      . '';                                          // .ZIP file comment               (variable size)
+      . '';                                                    // .ZIP file comment               (variable size)
   }
 
   // Utility methods ////////////////////////////////////////////////////////
@@ -787,161 +787,3 @@ class ZipStreamer {
     return 0x0000;
   }
 }
-
-abstract class ExtFileAttr {
-
-  /*
-    ZIP external file attributes layout
-    TTTTsstrwxrwxrwx0000000000ADVSHR
-    ^^^^____________________________ UNIX file type
-        ^^^_________________________ UNIX setuid, setgid, sticky
-           ^^^^^^^^^________________ UNIX permissions
-                    ^^^^^^^^________ "lower-middle byte" (TODO: what is this?)
-                            ^^^^^^^^ DOS attributes (reserved, reserved, archived, directory, volume, system, hidden, read-only
-  */
-
-  public static function getExtFileAttr($attr) {
-    return $attr;
-  }
-}
-
-class UNIX extends ExtFileAttr {
-
-  // Octal
-  const S_IFIFO = 0010000; /* named pipe (fifo) */
-  const S_IFCHR = 0020000; /* character special */
-  const S_IFDIR = 0040000; /* directory */
-  const S_IFBLK = 0060000; /* block special */
-  const S_IFREG = 0100000; /* regular */
-  const S_IFLNK = 0120000; /* symbolic link */
-  const S_IFSOCK = 0140000; /* socket */
-  const S_ISUID = 0004000; /* set user id on execution */
-  const S_ISGID = 0002000; /* set group id on execution */
-  const S_ISTXT = 0001000; /* sticky bit */
-  const S_IRWXU = 0000700; /* RWX mask for owner */
-  const S_IRUSR = 0000400; /* R for owner */
-  const S_IWUSR = 0000200; /* W for owner */
-  const S_IXUSR = 0000100; /* X for owner */
-  const S_IRWXG = 0000070; /* RWX mask for group */
-  const S_IRGRP = 0000040; /* R for group */
-  const S_IWGRP = 0000020; /* W for group */
-  const S_IXGRP = 0000010; /* X for group */
-  const S_IRWXO = 0000007; /* RWX mask for other */
-  const S_IROTH = 0000004; /* R for other */
-  const S_IWOTH = 0000002; /* W for other */
-  const S_IXOTH = 0000001; /* X for other */
-  const S_ISVTX = 0001000; /* save swapped text even after use */
-
-  public static function getExtFileAttr($attr) {
-    return parent::getExtFileAttr($attr) << 16;
-  }
-}
-
-abstract class DeflateStream {
-  static public function create($level) {
-    if (COMPR::NONE === $level) {
-      return new DeflateStoreStream($level);
-    } else {
-      return new DeflatePeclStream($level);
-    }
-  }
-  protected function __construct($level) {}
-
-  abstract public function update($data);
-  abstract public function finish();
-}
-
-class DeflatePeclStream extends DeflateStream {
-  private $peclDeflateStream;
-
-  const PECL1_DEFLATE_STREAM_CLASS = '\HttpDeflateStream';
-  const PECL2_DEFLATE_STREAM_CLASS = '\http\encoding\Stream\Deflate';
-
-  protected function __construct($level) {
-    $class = self::PECL1_DEFLATE_STREAM_CLASS;
-    if (!class_exists($class)) {
-      $class = self::PECL2_DEFLATE_STREAM_CLASS;
-    }
-    if (!class_exists($class)) {
-      new \Exception('unable to instantiate PECL deflate stream (requires pecl_http >= 0.10)');
-    }
-
-    $deflateFlags = constant($class . '::TYPE_RAW');
-    switch ($level) {
-      case COMPR::NORMAL:
-        $deflateFlags |= constant($class . '::LEVEL_DEF');
-        break;
-      case COMPR::MAXIMUM:
-        $deflateFlags |= constant($class . '::LEVEL_MAX');
-        break;
-      case COMPR::SUPERFAST:
-        $deflateFlags |= constant($class . '::LEVEL_MIN');
-        break;
-    }
-    $this->peclDeflateStream = new $class($deflateFlags);
-  }
-
-  public function update($data) {
-    return $this->peclDeflateStream->update($data);
-  }
-
-  public function finish() {
-    return $this->peclDeflateStream->finish();
-  }
-}
-
-class DeflateStoreStream extends DeflateStream {
-  const BLOCK_HEADER_NORMAL = 0x00;
-  const BLOCK_HEADER_FINAL = 0x01;
-  const BLOCK_HEADER_ERROR = 0x03;
-
-  const MAX_UNCOMPR_BLOCK_SIZE = 0xffff;
-
-  public function update($data) {
-    $result = '';
-    for ($pos = 0, $len = strlen($data); $pos < $len; $pos += self::MAX_UNCOMPR_BLOCK_SIZE) {
-      $result .= $this->write_block(self::BLOCK_HEADER_NORMAL, substr($data, $pos, self::MAX_UNCOMPR_BLOCK_SIZE));
-    }
-    return $result;
-  }
-
-  public function finish() {
-    return $this->write_block(self::BLOCK_HEADER_FINAL, '');
-  }
-
-  private function write_block($header, $data) {
-    return ''
-        . pack8($header)                    // block header                     3 bits, null padding = 1 byte
-        . pack16le(strlen($data))           // block data length                2 bytes
-        . pack16le(0xffff ^ strlen($data))  // complement of block data size    2 bytes
-        . $data                             // data
-        . '';
-      }
-}
-
-class DOS extends ExtFileAttr {
-
-  const READ_ONLY = 0x1;
-  const HIDDEN = 0x2;
-  const SYSTEM = 0x4;
-  const VOLUME = 0x8;
-  const DIR = 0x10;
-  const ARCHIVE = 0x20;
-  const RESERVED1 = 0x40;
-  const RESERVED2 = 0x80;
-}
-
-class GPFLAGS {
-  const NONE = 0x0000; // no flags set
-  const COMP1 = 0x0002; // compression flag 1 (compression settings, see APPNOTE for details)
-  const COMP2 = 0x0004; // compression flag 2 (compression settings, see APPNOTE for details)
-  const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
-  const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
-
-  // compression settings for deflate/deflate64
-  const DEFL_NORM = 0x0000; // normal compression (COMP1 and COMP2 not set)
-  const DEFL_MAX = COMP1; // maximum compression
-  const DEFL_FAST = COMP2; // fast compression
-  const DEFL_SFAST = 0x0006; // superfast compression (COMP1 and COMP2 set)
-}
-
