@@ -325,7 +325,7 @@ class ZipStreamer {
       $this->write($data);
     }
     $this->flush();
-    $this->dataCRC32 = unpack('N', hash_final($this->hashCtx, true));
+    $this->dataCRC32 = hexdec(hash_final($this->hashCtx));
 
     $ddLength = $this->addDataDescriptor($this->dataLength, $this->gzLength, $this->dataCRC32);
 
@@ -378,7 +378,7 @@ class ZipStreamer {
     }
 
     $this->filePath = self::normalizeFilePath($filePath);
-    $this->gpFlags = GPFLAGS::ADD;
+    $this->gpFlags = GPFLAGS::NONE;
 
     $this->dataLength = Count64::construct(0, !$this->zip64);
     $this->gzLength = Count64::construct(0, !$this->zip64);
@@ -585,8 +585,8 @@ class ZipStreamer {
 
       $this->flush();
     }
-    $crc = unpack('N', hash_final($hashCtx, true));
-    return array($dataLength, $gzLength, $crc[1]);
+    $crc = hexdec(hash_final($hashCtx));
+    return array($dataLength, $gzLength, $crc);
   }
 
   private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0) {
