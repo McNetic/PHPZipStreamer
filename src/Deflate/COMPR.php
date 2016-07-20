@@ -33,9 +33,14 @@
 namespace Rivimey\ZipStreamer\Deflate;
 
 class COMPR {
-  // compression method
-  const STORE = 0x0000; //  0 - The file is stored (no compression)
-  const DEFLATE = 0x0008; //  8 - The file is deflated
+  // Compression method: APPNOTE: 4.4.5
+  const STORE = 0;      //  0 - The file is stored (== no compression)
+  const SHRUNK = 1;     //  1 - The file is Shrunk
+  const IMPLODE = 6;    //  6 - Compressed using Implode
+  const DEFLATE = 8;    //  8 - Compressed using Deflate
+  const DEFLATE64 = 9;  //  9 - Enhanced Deflate using Deflate64
+  const BZIP2 = 12;     //  12 - Compressed using BZIP2
+  const LZMA = 14;      //  14 - Compressed using LMZA (EFS)
 
   // compression level (for deflate compression)
   const NONE = 0;
