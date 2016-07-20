@@ -33,16 +33,24 @@
 namespace Rivimey\ZipStreamer;
 
 class GPFLAGS {
-  const NONE = 0x0000; // no flags set
-  const COMP1 = 0x0002; // compression flag 1 (compression settings, see APPNOTE for details)
-  const COMP2 = 0x0004; // compression flag 2 (compression settings, see APPNOTE for details)
-  const ADD = 0x0008; // ADD flag (sizes and crc32 are append in data descriptor)
-  const EFS = 0x0800; // EFS flag (UTF-8 encoded filename and/or comment)
+  const NONE = 0x0000;      // no flags set
+  const ENCRYPT = 0x1 << 0; // File is Encrypted
+  const COMP1 = 0x1 << 1;   // compression flag 1 (compression settings, see APPNOTE for details)
+  const COMP2 = 0x1 << 2;   // compression flag 2 (compression settings, see APPNOTE for details)
+  const ADD = 0x1 << 3;     // ADD : Sizes and crc32 are append in data descriptor.
+  const ENH_DFL = 0x1 << 4; // for Deflate64.
+  const SES = 0x1 << 6;     // Strong encryption.
+  const EFS = 0x1 << 11;    // EFS flag (UTF-8 encoded filename and/or comment).
+  const CDHIDE = 0x1 << 13; // When Encrypting CD, data is masked.
 
   // compression settings for deflate/deflate64
   const DEFL_NORM = 0x0000; // normal compression (COMP1 and COMP2 not set)
-  const DEFL_MAX = COMP1; // maximum compression
-  const DEFL_FAST = COMP2; // fast compression
+  const DEFL_MAX = COMP1;   // maximum compression
+  const DEFL_FAST = COMP2;  // fast compression
   const DEFL_SFAST = 0x0006; // superfast compression (COMP1 and COMP2 set)
+
+  const LZMA_EOS = COMP1;   // End of Stream marker for LZMA
+  const IPLD_DICT = COMP1;  // Sliding Dict for Implode
+  const IPLD_TREE = COMP2;  // Shannon-Fano tree for Implode
 }
 
