@@ -527,15 +527,23 @@ class ZipStreamer {
    * @throws \Exception
    */
   private function validateCompressionOptions($compress, $level) {
-    if (COMPR::STORE === $compress) {
-    } else if (COMPR::DEFLATE === $compress) {
-      if (COMPR::NONE !== $level
-        && !class_exists(DeflatePeclStream::PECL1_DEFLATE_STREAM_CLASS)
-        && !class_exists(DeflatePeclStream::PECL2_DEFLATE_STREAM_CLASS)) {
-        throw new \Exception('unable to use compression method DEFLATE with level other than NONE (requires pecl_http >= 0.10)');
-      }
-    } else {
-      throw new \Exception('invalid option ' . $compress . ' (compression method)');
+
+    switch($compress) {
+      case COMPR::STORE:
+        break;
+
+      case COMPR::DEFLATE:
+        if (COMPR::NONE !== $level
+            && !class_exists(DeflatePeclStream::PECL1_DEFLATE_STREAM_CLASS)
+            && !class_exists(DeflatePeclStream::PECL2_DEFLATE_STREAM_CLASS)
+        ) {
+          throw new \Exception('unable to use compression method DEFLATE with level other than NONE (requires pecl_http >= 0.10)');
+        }
+        break;
+
+      default:
+        throw new \Exception('invalid option ' . $compress . ' (compression method)');
+        break;
     }
 
     if (!(COMPR::NONE === $level ||
