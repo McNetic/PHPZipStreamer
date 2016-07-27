@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<phpunit
+     bootstrap="tests/bootstrap.php"
+     colors="true"
+     strict="true"
+     verbose="true"
+     debug="true"
+>
+ <testsuites>
+  <testsuite name="ZipStreamer">
+   <file>tests/Count64Test.php</file>
+   <file>tests/ZipStreamerTest.php</file>
+   <file>tests/ZipStreamer_NoDeflateTest.php</file>
+  </testsuite>
+ </testsuites>
+
+</phpunit>
