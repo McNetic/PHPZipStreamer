@@ -60,7 +60,7 @@ class ZipStreamer {
   private $extFileAttrDir;
 
   /** @var stream output stream zip file is written to */
-  private $outStream;
+  private $outstream;
   /** @var boolean zip64 enabled */
   private $zip64 = True;
   /** @var int compression method */
