@@ -198,14 +198,18 @@ class ZipStreamer {
   /**
    * Add a file to the archive at the specified location and file name.
    *
-   * @param string $stream      Stream to read data from
-   * @param string $filePath    Filepath and name to be used in the archive.
-   * @param array $options      Optional, additional options
-   *                            Valid options are:
-   *                               * int timestamp: timestamp for the file (default: current time)
-   *                               * string comment: comment to be added for this file (default: none)
-   *                               * int compress: compression method (override global option for this file)
-   *                               * int level: compression level (override global option for this file)
+   * @param string $stream
+   *   Stream to read data from
+   * @param string $filePath
+   *   Filepath and name to be used in the archive.
+   * @param array $options
+   *   Optional, additional options
+   *   Valid options are:
+   *      * int timestamp: timestamp for the file (default: current time)
+   *      * string comment: comment to be added for this file (default: none)
+   *      * int compress: compression method (override global option for this file)
+   *      * int level: compression level (override global option for this file)
+   *
    * @return bool $success
    */
   public function addFileFromStream($stream, $filePath, $options = NULL) {
@@ -437,8 +441,8 @@ class ZipStreamer {
   /**
    * Add an empty directory entry to the zip archive.
    *
-   * @param string $directoryPath  Directory Path and name to be added to the archive.
-   * @param array $options      Optional, additional options
+   * @param string $directoryPath Directory Path and name to be added to the archive.
+   * @param array $options Optional, additional options
    *                            Valid options are:
    *                               * int timestamp: timestamp for the file (default: current time)
    *                               * string comment: comment to be added for this file (default: none)
@@ -480,8 +484,10 @@ class ZipStreamer {
 
   /**
    * Close the archive.
+   *
    * A closed archive can no longer have new files added to it. After
    * closing, the zip file is completely written to the output stream.
+   *
    * @return bool $success
    */
   public function finalize() {
@@ -513,6 +519,13 @@ class ZipStreamer {
     return False;
   }
 
+  /**
+   * Check that the indicated compression method and level is acceptable.
+   *
+   * @param $compress
+   * @param $level
+   * @throws \Exception
+   */
   private function validateCompressionOptions($compress, $level) {
     if (COMPR::STORE === $compress) {
     } else if (COMPR::DEFLATE === $compress) {
@@ -534,15 +547,60 @@ class ZipStreamer {
     }
   }
 
+  /**
+   * Write a block of data to the output stream.
+   *
+   * @param $data
+   * @return int
+   */
   private function write($data) {
     return fwrite($this->outstream, $data);
   }
 
+  /**
+   * Flush the output stream.
+   */
   private function flush() {
     return fflush($this->outstream);
   }
 
-  private function beginFile($filePath, $isDir, $fileComment, $timestamp, $gpFlags, $gzMethod,
+  /**
+   * Build and write out a local file header for a new file.
+   *
+   * Character encoding checks are done on both the filename and comment; if
+   * either requires UTF-8, then the record is marked as using UTF-8.
+   *
+   * @param $filePath
+   *   The file pathname for the new file; checked for UTF-8 vs ASCII encoding.
+   * @param $isDir
+   *   Flag: if True this is actually a directory entry not a file.
+   * @param $fileComment
+   *   The file comment describing the file; can be (often is) empty. Also
+   *   checked for encoding.
+   * @param $timestamp
+   *   The last modification / update date timestamp (unix style) to store for
+   *   this file.
+   * @param $gpFlags
+   *   The general flags for this file, using the GPFLAGS constants.
+   * @param $gzMethod
+   *   The compression method, using the COMPR constants.
+   * @param int $dataLength
+   *   The length of the file in bytes, or 0 if this is not known at this point,
+   *   in which case GPFLAGS must include ADD and a DataDirectory record must
+   *   appear after the data including this and the CRC.
+   * @param int $gzLength
+   *   The compressed length of the file in bytes, or 0 if not known: as for
+   *   dataLength.
+   * @param int $dataCRC32
+   *   The CRC32b checksum of the file, or 0 if not known: as for dataLength.
+   *
+   * @return array[2]
+   *   Two values:
+   *    - gpFlags - updated Flags to store.
+   *    - lfhLength - the length of the file header in bytes.
+   */
+  private function beginFile($filePath, $isDir, $fileComment, $timestamp,
+                             $gpFlags, $gzMethod,
                              $dataLength = 0, $gzLength = 0, $dataCRC32 = 0) {
 
     $isFileUTF8 = mb_check_encoding($filePath, 'UTF-8') && !mb_check_encoding($filePath, 'ASCII');
@@ -562,6 +620,21 @@ class ZipStreamer {
     return array($gpFlags, strlen($localFileHeader));
   }
 
+  /**
+   * Write data to the current output stream.
+   *
+   * Track the total data length, update the compressed data and checksums,
+   * and write the block to the php output stream.
+   *
+   * @param $data
+   *   The data to (compress and) write to the file.
+   * @param $compress
+   *   The compression method. One of the COMPR constants.
+   *    - DEFLATE is the only compression supported at present;
+   *    - STORE is supported for 'do not compress'.
+   * @param $level
+   *   Not used.
+   */
   private function writeFile($data, $compress, $level) {
 
     $this->dataLength->add(strlen($data));
@@ -574,6 +647,25 @@ class ZipStreamer {
 
   }
 
+  /**
+   * Copy the data from the input stream to a file started with beginFile.
+   *
+   * Initialise CRC32, read and write chunks of data through to the output
+   * stream, and calculate the final CRC, compressing the data as required.
+   *
+   * @param $stream
+   *   A php fopen() resource stream to read.
+   * @param $compress
+   *   The compression method to use. Only DEFLATE is supported.
+   * @param $level
+   *   The compression level to use for DEFLATE compression.
+   *
+   * @return array[3]
+   *   Three values:
+   *    - dataLength - the number of bytes copied from the input stream.
+   *    - gpzLength - the number of bytes written tothe output stream.
+   *    - crc - the CRC32b checksum of the input data.
+   */
   private function streamFileData($stream, $compress, $level) {
     $dataLength = Count64::construct(0, !$this->zip64);
     $gzLength = Count64::construct(0, !$this->zip64);
@@ -604,6 +696,13 @@ class ZipStreamer {
     return array($dataLength, $gzLength, $crc);
   }
 
+  /**
+   * Create a Zip64 extended information record.
+   *
+   * @param int $dataLength
+   * @param int $gzLength
+   * @return string
+   */
   private function buildZip64ExtendedInformationField($dataLength = 0, $gzLength = 0) {
     return ''
       . PackBits::pack16le(0x0001)         // tag for this "extra" block type (ZIP64)        2 bytes (0x0001)
@@ -614,6 +713,33 @@ class ZipStreamer {
       . PackBits::pack32le(0);             // number of the disk on which this file starts   4 bytes
   }
 
+  /**
+   * Create a local file header record.
+   *
+   * Uses flag $this->zip64 to indicate whether to use 64 bit data structures.
+   *
+   * @param $filePath
+   *   The file pathname for the new file.
+   * @param $timestamp
+   *   The last modification / update date timestamp (Unix style) to store for
+   *   this file.
+   * @param $gpFlags
+   *   The general flags for this file, using the GPFLAGS constants.
+   * @param $gzMethod
+   *   The compression method, using the COMPR constants.
+   * @param $dataLength
+   *   The length of the file in bytes, or 0 if this is not known at this point,
+   *   in which case GPFLAGS must include ADD and a DataDirectory record must
+   *   appear after the data including this and the CRC.
+   * @param $gzLength
+   *   The compressed length of the file in bytes, or 0 if not known: as for
+   * @param $isDir
+   *   Flag: if True this is actually a directory entry not a file.
+   * @param int $dataCRC32
+   *   The CRC32b checksum of the file, or 0 if not known: as for dataLength.
+   *
+   * @return string
+   */
   private function buildLocalFileHeader($filePath, $timestamp, $gpFlags,
                                         $gzMethod, $dataLength, $gzLength, $isDir = FALSE, $dataCRC32 = 0) {
     $versionToExtract = $this->getVersionToExtract($isDir);
@@ -647,6 +773,14 @@ class ZipStreamer {
       . $zip64Ext;                                        // extra field                     (variable size)
   }
 
+  /**
+   * Create a data descriptor record.
+   *
+   * @param $dataLength
+   * @param $gzLength
+   * @param $dataCRC32
+   * @return int
+   */
   private function addDataDescriptor($dataLength, $gzLength, $dataCRC32) {
     if ($this->zip64) {
       $length = 20;
@@ -666,6 +800,12 @@ class ZipStreamer {
     return $length;
   }
 
+  /**
+   * Create a Zip64 End of Central Directory record.
+   *
+   * @param $cdRecLength
+   * @return string
+   */
   private function buildZip64EndOfCentralDirectoryRecord($cdRecLength) {
     $versionToExtract = $this->getVersionToExtract(False);
     $cdRecCount = sizeof($this->cdRec);
@@ -690,6 +830,12 @@ class ZipStreamer {
 
   }
 
+  /**
+   * Create a Zip64 End of Central Directory Locator record.
+   *
+   * @param $cdRecLength
+   * @return string
+   */
   private function buildZip64EndOfCentralDirectoryLocator($cdRecLength) {
     $zip64RecStart = Count64::construct($this->offset, !$this->zip64)
                             ->add($cdRecLength);
@@ -703,6 +849,20 @@ class ZipStreamer {
         . PackBits::pack32le(1);                                     // total number of disks                       4 bytes
   }
 
+  /**
+   * Build a Central Directory Header record.
+   *
+   * @param $filePath
+   * @param $timestamp
+   * @param $gpFlags
+   * @param $gzMethod
+   * @param $dataLength
+   * @param $gzLength
+   * @param $dataCRC32
+   * @param $extFileAttr
+   * @param $isDir
+   * @return string
+   */
   private function buildCentralDirectoryHeader($filePath, $timestamp, $gpFlags,
                                                $gzMethod, $dataLength, $gzLength, $dataCRC32,
                                                $extFileAttr, $isDir) {
@@ -746,6 +906,12 @@ class ZipStreamer {
       . '';                                      //file comment                    (variable size)
   }
 
+  /**
+   * Build an End of Central Directory record.
+   *
+   * @param $cdRecLength
+   * @return string
+   */
   private function buildEndOfCentralDirectoryRecord($cdRecLength) {
     if ($this->zip64) {
       $diskNumber = -1;
