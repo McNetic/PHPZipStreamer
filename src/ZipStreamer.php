@@ -322,6 +322,7 @@ class ZipStreamer {
       return False;
     }
     $this->writeFile($block, $this->addFileOptions['compress'], $this->addFileOptions['level']);
+    $this->flush();
 
     return True;
   }
@@ -573,7 +574,9 @@ class ZipStreamer {
    * Flush the output stream.
    */
   private function flush() {
-    return fflush($this->outstream);
+    fflush($this->outstream);
+    ob_flush();
+    flush();
   }
 
   /**
