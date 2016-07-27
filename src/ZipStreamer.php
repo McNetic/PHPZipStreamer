@@ -73,13 +73,13 @@ class ZipStreamer {
   /** @var int offset of next file to be added */
   private $offset;
   /** @var boolean indicates zip is finalized and sent to client; no further addition possible */
-  private $isFinalized = false;
+  private $isFinalized = False;
 
   /*
    * These values are used to persist state during addFileOpen/Write/Close.
    */
-  private $isFileOpen = FALSE;
-  private $hashCtx = FALSE;
+  private $isFileOpen = False;
+  private $hashCtx = False;
   private $filePath;
   private $addFileOptions;
   private $gpFlags;
@@ -101,10 +101,10 @@ class ZipStreamer {
    */
   function __construct($options = NULL) {
     $defaultOptions = array(
-        'outstream' => NULL,
-        'zip64' => True,
-        'compress' => COMPR::STORE,
-        'level' => COMPR::NORMAL,
+      'outstream' => NULL,
+      'zip64' => True,
+      'compress' => COMPR::STORE,
+      'level' => COMPR::NORMAL,
     );
     if (is_null($options)) {
       $options = array();
@@ -113,7 +113,8 @@ class ZipStreamer {
 
     if ($options['outstream']) {
       $this->outstream = $options['outstream'];
-    } else {
+    }
+    else {
       $this->outstream = fopen('php://output', 'w');
     }
     $this->zip64 = $options['zip64'];
@@ -136,16 +137,18 @@ class ZipStreamer {
   }
 
   function __destruct() {
-    $this->isFinalized = true;
-    $this->cdRec = null;
+    $this->isFinalized = True;
+    $this->cdRec = NULL;
   }
 
   private function getVersionToExtract($isDir) {
     if ($this->zip64) {
       $version = 0x2d; // 4.5 - File uses ZIP64 format extensions
-    } else if ($isDir) {
+    }
+    else if ($isDir) {
       $version = 0x14; // 2.0 - File is a folder (directory)
-    } else {
+    }
+    else {
       $version = 0x0a; //   1.0 - Default value
     }
     return $version;
@@ -159,8 +162,8 @@ class ZipStreamer {
   * @param string $contentType Content mime type to be set (optional, default 'application/zip')
   */
   public function sendHeaders($archiveName = 'archive.zip', $contentType = 'application/zip') {
-    $headerFile = null;
-    $headerLine = null;
+    $headerFile = NULL;
+    $headerLine = NULL;
     if (!headers_sent($headerFile, $headerLine)
           or die("<p><strong>Error:</strong> Unable to send file " .
                  "$archiveName. HTML Headers have already been sent from " .
@@ -177,11 +180,12 @@ class ZipStreamer {
         header('Connection: Keep-Alive');
         header('Content-Type: ' . $contentType);
         // Use UTF-8 filenames when not using Internet Explorer
-        if(strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE') > 0) {
-          header('Content-Disposition: attachment; filename="' . rawurlencode($archiveName) . '"' );
-        }  else  {
-          header( 'Content-Disposition: attachment; filename*=UTF-8\'\'' . rawurlencode($archiveName)
-              . '; filename="' . rawurlencode($archiveName) . '"' );
+        if (strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE') > 0) {
+          header('Content-Disposition: attachment; filename="' . rawurlencode($archiveName) . '"');
+        }
+        else {
+          header('Content-Disposition: attachment; filename*=UTF-8\'\'' . rawurlencode($archiveName)
+                 . '; filename="' . rawurlencode($archiveName) . '"');
         }
         header('Content-Transfer-Encoding: binary');
       }
@@ -206,41 +210,48 @@ class ZipStreamer {
    */
   public function addFileFromStream($stream, $filePath, $options = NULL) {
     if ($this->isFinalized) {
-      return false;
+      return False;
     }
     $defaultOptions = array(
-        'timestamp' => NULL,
-        'comment' => NULL,
-        'compress' => $this->compress,
-        'level' => $this->level,
+      'timestamp' => NULL,
+      'comment' => NULL,
+      'compress' => $this->compress,
+      'level' => $this->level,
     );
     if (is_null($options)) {
-    	$options = array();
+      $options = array();
     }
     $options = array_merge($defaultOptions, $options);
     $this->validateCompressionOptions($options['compress'], $options['level']);
 
     if (!is_resource($stream) || get_resource_type($stream) != 'stream') {
-      return false;
+      return False;
     }
 
     $filePath = self::normalizeFilePath($filePath);
 
     $gpFlags = GPFLAGS::ADD;
 
-    list($gpFlags, $lfhLength) = $this->beginFile($filePath, False, $options['comment'], $options['timestamp'], $gpFlags, $options['compress']);
-    list($dataLength, $gzLength, $dataCRC32) = $this->streamFileData($stream, $options['compress'], $options['level']);
+    list($gpFlags, $lfhLength) =
+      $this->beginFile($filePath, False, $options['comment'],
+                       $options['timestamp'], $gpFlags, $options['compress']);
+
+    list($dataLength, $gzLength, $dataCRC32) =
+      $this->streamFileData($stream, $options['compress'], $options['level']);
 
     $ddLength = $this->addDataDescriptor($dataLength, $gzLength, $dataCRC32);
 
     // build cdRec
-    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $options['timestamp'], $gpFlags, $options['compress'],
-                                                        $dataLength, $gzLength, $dataCRC32, $this->extFileAttrFile, FALSE);
+    $this->cdRec[] =
+      $this->buildCentralDirectoryHeader($filePath, $options['timestamp'],
+                                         $gpFlags, $options['compress'],
+                                         $dataLength, $gzLength, $dataCRC32,
+                                         $this->extFileAttrFile, False);
 
     // calc offset
     $this->offset->add($ddLength)->add($lfhLength)->add($gzLength);
 
-    return true;
+    return True;
   }
 
   /**
@@ -258,9 +269,9 @@ class ZipStreamer {
    */
   public function addFileOpen($filePath, $options = NULL) {
     if ($this->isFinalized || $this->isFileOpen) {
-      return FALSE;
+      return False;
     }
-    $this->isFileOpen = TRUE;
+    $this->isFileOpen = True;
     $defaultOptions = array(
       'timestamp' => NULL,
       'comment' => NULL,
@@ -283,11 +294,11 @@ class ZipStreamer {
     }
 
     list($this->gpFlags, $this->lfhLength) =
-      $this->beginFile($this->filePath, FALSE,
+      $this->beginFile($this->filePath, False,
                        $this->addFileOptions['comment'], $this->addFileOptions['timestamp'],
                        $this->gpFlags, $this->addFileOptions['compress'],
                        0, 0, 0);
-    return TRUE;
+    return True;
   }
 
   /**
@@ -296,15 +307,15 @@ class ZipStreamer {
    * @param string $block
    *   Data to write to the file.
    * @return bool $success
-   *   FALSE if there is no file open with addFileOpen(), else TRUE.
+   *   False if there is no file open with addFileOpen(), else True.
    */
   public function addFileWrite($block) {
     if ($this->isFinalized || !$this->isFileOpen) {
-      return FALSE;
+      return False;
     }
     $this->writeFile($block, $this->addFileOptions['compress'], $this->addFileOptions['level']);
 
-    return TRUE;
+    return True;
   }
 
   /**
@@ -314,7 +325,7 @@ class ZipStreamer {
    */
   public function addFileClose() {
     if ($this->isFinalized || !$this->isFileOpen) {
-      return FALSE;
+      return False;
     }
 
     if (COMPR::DEFLATE === $this->addFileOptions['compress']) {
@@ -334,12 +345,12 @@ class ZipStreamer {
       $this->buildCentralDirectoryHeader($this->filePath, $this->addFileOptions['timestamp'],
                                          $this->gpFlags, $this->addFileOptions['compress'],
                                          $this->dataLength, $this->gzLength,
-                                         $this->dataCRC32, $this->extFileAttrFile, FALSE);
+                                         $this->dataCRC32, $this->extFileAttrFile, False);
 
     // calc offset
     $this->offset->add($ddLength)->add($this->lfhLength)->add($this->gzLength);
-    $this->isFileOpen = FALSE;
-    return TRUE;
+    $this->isFileOpen = False;
+    return True;
   }
 
   /**
@@ -359,8 +370,9 @@ class ZipStreamer {
    */
   public function addFileFromString($data, $filePath, $options = NULL) {
     if ($this->isFinalized) {
-      return FALSE;
+      return False;
     }
+
     $defaultOptions = array(
       'timestamp' => NULL,
       'comment' => NULL,
@@ -374,7 +386,7 @@ class ZipStreamer {
     $this->validateCompressionOptions($options['compress'], $options['level']);
 
     if (!is_string($data)) {
-      return FALSE;
+      return False;
     }
 
     $this->filePath = self::normalizeFilePath($filePath);
@@ -394,10 +406,11 @@ class ZipStreamer {
     }
     $this->gzLength->add(strlen($data));
 
-    list($this->gpFlags, $this->lfhLength) = $this->beginFile($this->filePath, FALSE,
-                                                        $options['comment'], $options['timestamp'],
-                                                        $this->gpFlags, $options['compress'],
-                                                        $this->dataLength, $this->gzLength, $this->dataCRC32);
+    list($this->gpFlags, $this->lfhLength) =
+      $this->beginFile($this->filePath, False,
+                       $options['comment'], $options['timestamp'],
+                       $this->gpFlags, $options['compress'],
+                       $this->dataLength, $this->gzLength, $this->dataCRC32);
 
     $this->write($data);
 
@@ -409,15 +422,16 @@ class ZipStreamer {
     $this->flush();
 
     // build cdRec
-    $this->cdRec[] = $this->buildCentralDirectoryHeader($filePath, $options['timestamp'],
-                                                        $this->gpFlags, $options['compress'],
-                                                        $this->dataLength, $this->gzLength, $this->dataCRC32,
-                                                        $this->extFileAttrFile, FALSE);
+    $this->cdRec[] =
+      $this->buildCentralDirectoryHeader($filePath, $options['timestamp'],
+                                         $this->gpFlags, $options['compress'],
+                                         $this->dataLength, $this->gzLength, $this->dataCRC32,
+                                         $this->extFileAttrFile, False);
 
     // calc offset
     $this->offset->add($this->lfhLength)->add($this->gzLength);
 
-    return TRUE;
+    return True;
   }
 
   /**
@@ -432,14 +446,14 @@ class ZipStreamer {
    */
   public function addEmptyDir($directoryPath, $options = NULL) {
     if ($this->isFinalized) {
-      return false;
+      return False;
     }
     $defaultOptions = array(
-    		'timestamp' => NULL,
-    		'comment' => NULL,
+      'timestamp' => NULL,
+      'comment' => NULL,
     );
     if (is_null($options)) {
-    	$options = array();
+      $options = array();
     }
     $options = array_merge($defaultOptions, $options);
 
@@ -449,19 +463,19 @@ class ZipStreamer {
       $gpFlags = 0x0000;
       $gzMethod = COMPR::STORE; // Compression type 0 = stored
 
-      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, TRUE,
+      list($gpFlags, $lfhLength) = $this->beginFile($directoryPath, True,
                                                     $options['comment'], $options['timestamp'],
                                                     $gpFlags, $gzMethod);
       // build cdRec
       $this->cdRec[] = $this->buildCentralDirectoryHeader($directoryPath, $options['timestamp'], $gpFlags, $gzMethod,
-                                                          Count64::construct(0, !$this->zip64), Count64::construct(0, !$this->zip64), 0, $this->extFileAttrDir, TRUE);
+                                                          Count64::construct(0, !$this->zip64), Count64::construct(0, !$this->zip64), 0, $this->extFileAttrDir, True);
 
       // calc offset
       $this->offset->add($lfhLength);
 
-      return true;
+      return True;
     }
-    return false;
+    return False;
   }
 
   /**
@@ -490,13 +504,13 @@ class ZipStreamer {
 
       $this->flush();
 
-      $this->isFinalized = true;
-      $cd = null;
-      $this->cdRec = null;
+      $this->isFinalized = True;
+      $cd = NULL;
+      $this->cdRec = NULL;
 
-      return true;
+      return True;
     }
-    return false;
+    return False;
   }
 
   private function validateCompressionOptions($compress, $level) {
@@ -512,9 +526,10 @@ class ZipStreamer {
     }
 
     if (!(COMPR::NONE === $level ||
-        COMPR::NORMAL === $level ||
-        COMPR::MAXIMUM === $level ||
-        COMPR::SUPERFAST === $level)) {
+          COMPR::NORMAL === $level ||
+          COMPR::MAXIMUM === $level ||
+          COMPR::SUPERFAST === $level)
+    ) {
       throw new \Exception('invalid option ' . $level . ' (compression level');
     }
   }
