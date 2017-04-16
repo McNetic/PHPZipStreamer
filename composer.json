@@ -19,6 +19,11 @@
       "role": "Contributor"
     }
   ],
+  "autoload": {
+		"classmap": [
+			"src/"
+		]
+	},
   "repositories": [ {
       "type": "vcs",
       "url": "https://github.com/McNetic/PHPZipStreamer"
