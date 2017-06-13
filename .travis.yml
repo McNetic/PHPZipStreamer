@@ -2,19 +2,23 @@ language: php
 sudo: false
 
 env:
- - PECL_HTTP_VERSION=1.7.6
- - PECL_HTTP_VERSION=2.5.0
- - PECL_HTTP_VERSION=3.0.0RC1
+# - PECL_HTTP_VERSION=1.7.6
+# - PECL_HTTP_VERSION=2.5.0
+# - PECL_HTTP_VERSION=3.0.0
+# - PECL_HTTP_VERSION=3.1.0
+ - PHP_ARCH=x86 PECL_HTTP_VERSION=2.5.0
+ - PHP_ARCH=x64 PECL_HTTP_VERSION=2.5.0
 
 php:
-  - 7.0
+#  - 5.3
+#  - 5.4
+#  - 5.5
   - 5.6
-  - 5.5
-  - 5.4
-  - 5.3
+#  - 7.0
+#  - 7.1
 
 before_install:
-  - sh -c "mkdir -p ${TRAVIS_BUILD_DIR}/travis/module-cache/`php-config --vernum`"
+ - sh -c "mkdir -p ${TRAVIS_BUILD_DIR}/travis/module-cache/`php-config --vernum`"
 
 before_script:
  - ./test/travis/php-modules-install.sh
@@ -25,9 +29,16 @@ script:
 cache:
   directories:
   - ${TRAVIS_BUILD_DIR}/travis/module-cache
-
+    
 matrix:
   fast_finish: true
+  include:
+    - env: PHP_ARCH=x86 PECL_HTTP_VERSION=2.5.0
+      addons:
+        apt:
+          packages:
+          - php5:i386
+    - env: PHP_ARCH=x64 PECL_HTTP_VERSION=2.5.0
   exclude:
     - php: 5.5
       env: PECL_HTTP_VERSION=1.7.6
@@ -35,3 +46,6 @@ matrix:
       env: PECL_HTTP_VERSION=1.7.6
     - php: 7.0
       env: PECL_HTTP_VERSION=1.7.6
+    - php: 7.1
+      env: PECL_HTTP_VERSION=1.7.6
+      
