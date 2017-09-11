@@ -5,6 +5,9 @@
 * This file is licensed under the GNU GPL version 3 or later. 
 * See COPYING for details.
 */
+
+require_once __DIR__ . '/../../src/lib/Count64.php';
+
 class TestPack extends PHPUnit_Framework_TestCase
 {
   public function providerPack16leValues() {

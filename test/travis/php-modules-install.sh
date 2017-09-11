@@ -35,8 +35,8 @@ pecl_module_install() {
 }
 
 if [[ 7 -le ${PECL_HTTP_VERSION%%.*} ]]; then
-  yes | pecl_module_install raphf raphf.so
-  yes | pecl_module_install propro propro.so
+  yes | pecl_module_install raphf-2.0.0 raphf.so
+  yes | pecl_module_install propro-2.0.1 propro.so
 elif [[ 1 -lt ${PECL_HTTP_VERSION%%.*} ]]; then
   yes | pecl_module_install raphf-1.1.2 raphf.so
   yes | pecl_module_install propro-1.0.2 propro.so

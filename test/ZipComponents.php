@@ -8,8 +8,6 @@
  */
 namespace ZipStreamer;
 
-require_once "src/ZipStreamer.php";
-
 /**
  * @codeCoverageIgnore
  */
