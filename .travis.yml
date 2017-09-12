@@ -2,6 +2,9 @@ language: php
 dist: trusty
 sudo: required
 
+services:
+  - docker
+
 env:
  - PECL_HTTP_VERSION=3.1.1RC1
 
@@ -11,9 +14,10 @@ php:
   - 7.0
 
 before_install:
+  - docker build -t datawraith/p7zip test/integration
   - composer install --dev
   - sh -c "mkdir -p ${TRAVIS_BUILD_DIR}/travis/module-cache/`php-config --vernum`"
-  - sudo apt-get install unzip p7zip-full libgnutls-dev
+  - sudo apt-get install unzip libgnutls-dev
 
 before_script:
  - ./test/travis/php-modules-install.sh
