@@ -16,18 +16,12 @@ php:
 before_install:
   - docker build -t datawraith/p7zip test/integration
   - composer install --dev
-  - sh -c "mkdir -p ${TRAVIS_BUILD_DIR}/travis/module-cache/`php-config --vernum`"
   - sudo apt-get install unzip libgnutls-dev
-
-before_script:
- - ./test/travis/php-modules-install.sh
+  - pecl channel-update pecl.php.net
+  - printf "\n\n\n" | pecl install pecl_http-$PECL_HTTP_VERSION
 
 script:
  - vendor/bin/phpunit --configuration test/phpunit.xml
-
-cache:
-  directories:
-  - ${TRAVIS_BUILD_DIR}/travis/module-cache
 
 matrix:
   fast_finish: true
