@@ -88,8 +88,8 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $eocdrec->assertValues(array(
           "numberDisk" => 0xffff,
           "numberDiskStartCD" => 0xffff,
-          "numberEntriesDisk" => 0xffff,
-          "numberEntriesCD" => 0xffff,
+          "numberEntriesDisk" => sizeof($files),
+          "numberEntriesCD" => sizeof($files),
           "size" => 0xffffffff,
           "offsetStart" => 0xffffffff,
           "lengthComment" => 0,
