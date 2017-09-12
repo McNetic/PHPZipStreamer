@@ -8,8 +8,8 @@
  */
 namespace ZipStreamer;
 
-require "src/ZipStreamer.php";
-require "test/ZipComponents.php";
+require_once  __DIR__ . "/../src/ZipStreamer.php";
+require_once  __DIR__ . "/ZipComponents.php";
 
 class File {
   const FILE = 1;
@@ -65,12 +65,12 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
   }
 
   protected function assertOutputEqualsFile($filename) {
-    return $this->assertEquals(file_get_contents($filename), $this->getOutput());
+    $this->assertEquals(file_get_contents($filename), $this->getOutput());
   }
 
   protected function assertContainsOneMatch($pattern, $input) {
     $results = preg_grep($pattern, $input);
-    return $this->assertEquals(1, sizeof($results));
+    $this->assertEquals(1, sizeof($results));
   }
 
   protected function assertOutputZipfileOK($files, $options) {
@@ -88,8 +88,8 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
       $eocdrec->assertValues(array(
           "numberDisk" => 0xffff,
           "numberDiskStartCD" => 0xffff,
-          "numberEntriesDisk" => 0xffff,
-          "numberEntriesCD" => 0xffff,
+          "numberEntriesDisk" => sizeof($files),
+          "numberEntriesCD" => sizeof($files),
           "size" => 0xffffffff,
           "offsetStart" => 0xffffffff,
           "lengthComment" => 0,
@@ -311,6 +311,7 @@ class TestZipStreamer extends \PHPUnit_Framework_TestCase {
     $zip = new ZipStreamer(array(
         'outstream' => $this->outstream
     ));
+    $zip->turnOffOutputBuffering = false;
     $_SERVER['HTTP_USER_AGENT'] = $browser;
     call_user_func_array(array($zip, "sendHeaders"), $arguments);
     $headers = xdebug_get_headers();

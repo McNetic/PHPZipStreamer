@@ -31,7 +31,7 @@
  */
 namespace ZipStreamer;
 
-require "lib/Count64.php";
+require_once __DIR__ . "/lib/Count64.php";
 
 class COMPR {
   // compression method
@@ -76,8 +76,10 @@ class ZipStreamer {
   private $offset;
   /** @var boolean indicates zip is finalized and sent to client; no further addition possible */
   private $isFinalized = false;
+  /** @var bool only used for unit testing */
+  public $turnOffOutputBuffering = true;
 
-  /**
+    /**
    * Constructor. Initializes ZipStreamer object for immediate usage.
    * @param array $options Optional, ZipStreamer and zip file options as key/value pairs.
    *                       Valid options are:
@@ -178,7 +180,9 @@ class ZipStreamer {
     }
     $this->flush();
     // turn off output buffering
-    @ob_end_flush();
+      if ($this->turnOffOutputBuffering) {
+          @ob_end_flush();
+      }
   }
 
   /**
@@ -525,7 +529,7 @@ class ZipStreamer {
   private function buildEndOfCentralDirectoryRecord($cdRecLength) {
     if ($this->zip64) {
       $diskNumber = -1;
-      $cdRecCount = -1;
+      $cdRecCount = min(sizeof($this->cdRec), 0xffff);
       $cdRecLength = -1;
       $offset = -1;
     } else {
