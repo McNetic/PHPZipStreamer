@@ -18,6 +18,10 @@
       "name": "Lukas Reschke",
       "email": "lukas@owncloud.com",
       "role": "Contributor"
+    },{
+      "name": "Thomas Müller",
+      "email": "thomas.mueller@tmit.eu",
+      "role": "Contributor"
     }
   ],
   "repositories": [ {
