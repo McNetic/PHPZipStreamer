@@ -469,9 +469,9 @@ class FileEntry extends zipRecord {
     }
     if (GPFLAGS::ADD & $this->lfh->gpFlags) {
       if (is_null($this->lfh->z64Ext)) {
-        $ddLength = 12;
+        $ddLength = 16;
       } else {
-        $ddLength = 20;
+        $ddLength = 24;
       }
       $this->dd = DataDescriptor::constructFromString($str, $pos, $ddLength);
       $pos = $this->dd->end + 1;
@@ -568,6 +568,7 @@ class LocalFileHeader extends zipRecord {
  * @codeCoverageIgnore
  */
 class DataDescriptor extends zipRecord {
+  protected static $MAGIC = 0x08074b50; // data descriptor header signature
   protected static $shortName = "DD";
   public $dataCRC32;
   public $sizeCompressed;
@@ -584,13 +585,23 @@ class DataDescriptor extends zipRecord {
   }
 
   public static function constructFromString($str, $offset = 0, $size = -1) {
+    $ddheadPos = strpos($str, static::getMagicBytes(), $offset);
+    if (self::$unitTest) {
+      self::$unitTest->assertFalse(False === $ddheadPos, "data descriptor header missing");
+      self::$unitTest->assertEquals($offset, $ddheadPos, "garbage before data descriptor header");
+    }
+
     return static::__constructFromString($str, $offset, $size);
   }
 
   public function readFromString($str, $pos, $size = -1) {
     $this->begin = $pos;
+    $magic = readstr($str, $pos, 4);
+    if (static::getMagicBytes() != $magic) {
+      throw new ParseException("invalid magic");
+    }
     $this->dataCRC32 = (int) unpack32le(readstr($str, $pos, 4));
-    if (20 == $size) {
+    if (24 == $size) {
       $this->sizeCompressed = unpack64le(readstr($str, $pos, 8));
       $this->size = unpack64le(readstr($str, $pos, 8));
     } else {

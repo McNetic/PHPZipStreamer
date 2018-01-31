@@ -35,7 +35,7 @@ class UnpackTest extends PHPUnit_Framework_TestCase
         $fullOutput = implode("\n", $output);
         $this->assertEquals($output[1], '7-Zip [64] 16.02 : Copyright (c) 1999-2016 Igor Pavlov : 2016-05-21', $fullOutput);
         $this->assertEquals(0, $return_var, $fullOutput);
-        $this->assertTrue(in_array('1 file, 939 bytes (1 KiB)', $output), $fullOutput);
+        $this->assertTrue(in_array('1 file, 943 bytes (1 KiB)', $output), $fullOutput);
     }
 
     public function testUnzip() {
