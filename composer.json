@@ -22,6 +22,10 @@
       "name": "Thomas Müller",
       "email": "thomas.mueller@tmit.eu",
       "role": "Contributor"
+    },{
+      "name": "Roeland Jago Douma",
+      "email": "roeland@famdouma.nl",
+      "role": "Contributor"
     }
   ],
   "repositories": [ {
