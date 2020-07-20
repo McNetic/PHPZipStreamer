@@ -4,6 +4,7 @@
      strict="true"
      verbose="true"
      debug="true"
+     bootstrap="bootstrap.php"
 >
   <testsuite name="ZipStreamer">
     <file>ZipStreamerTest.php</file>
