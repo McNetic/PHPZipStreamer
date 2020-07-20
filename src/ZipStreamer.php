@@ -31,18 +31,6 @@
  */
 namespace ZipStreamer;
 
-class COMPR {
-  // compression method
-  const STORE = 0x0000; //  0 - The file is stored (no compression)
-  const DEFLATE = 0x0008; //  8 - The file is deflated
-
-  // compression level (for deflate compression)
-  const NONE = 0;
-  const NORMAL = 1;
-  const MAXIMUM = 2;
-  const SUPERFAST = 3;
-}
-
 class ZipStreamer {
   const VERSION = "1.0";
 

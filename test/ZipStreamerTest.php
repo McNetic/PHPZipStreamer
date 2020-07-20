@@ -8,8 +8,6 @@
  */
 namespace ZipStreamer;
 
-use ZipStreamer\ZipStreamer;
-
 require_once  __DIR__ . "/ZipComponents.php";
 
 class File {
