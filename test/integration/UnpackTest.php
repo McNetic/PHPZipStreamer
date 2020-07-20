@@ -4,7 +4,7 @@
  *
  */
 
-class UnpackTest extends PHPUnit_Framework_TestCase
+class UnpackTest extends \PHPUnit\Framework\TestCase
 {
     private $tmpfname;
 
