@@ -20,43 +20,41 @@
  * @copyright Copyright (C) 2013-2014 Nicolai Ehemann and contributors
  * @license GNU GPL
  */
-namespace ZipStreamer;
+namespace ZipStreamer\Lib;
 
-class Count64_64 extends Count64Base {
-  private $value;
+class Count64_32 extends Count64Base {
+  private $loBytes;
+  private $hiBytes;
 
   public function getHiBytes() {
-    return urShift($this->value, 32);
+    return $this->hiBytes;
   }
 
   public function getLoBytes() {
-    return $this->value & INT64_LOW_MAP;
+    return $this->loBytes;
   }
 
   public function _getValue() {
-    return $this->value;
+    return array($this->hiBytes, $this->loBytes);
   }
 
   public function set($value) {
     if (is_int($value)) {
-      if ($this->limit32Bit && INT_MAX_32 < $value) {
-        throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
-      }
-      $this->value = $value;
+      $this->loBytes = $value;
+      $this->hiBytes = 0;
     } else if (is_array($value) && 2 == sizeof($value)) {
+      $this->loBytes = $value[0];
       if ($this->limit32Bit && 0 !== $value[1]) {
-        throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
+        throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
       }
-      $this->value = $value[1];
-      $this->value = $this->value << 32;
-      $this->value = $this->value + $value[0];
+      $this->hiBytes = $value[1];
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
       $value = $value->_getValue();
-      if ($this->limit32Bit && INT_MAX_32 < $value) {
-        throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
+          if ($this->limit32Bit && 0 !== $value[0]) {
+        throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
       }
-      $this->value = $value;
-
+      $this->hiBytes = $value[0];
+      $this->loBytes = $value[1];
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_SET_INVALID_ARGUMENT);
     }
@@ -65,16 +63,34 @@ class Count64_64 extends Count64Base {
 
   public function add($value) {
     if (is_int($value)) {
-      $sum = (int) ($this->value + $value);
+      $sum = (int) ($this->loBytes + $value);
+      // overflow!
+      if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
+        || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        if ($this->limit32Bit) {
+          throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+        }
+        $this->hiBytes = (int) ($this->hiBytes + 1);
+      }
+      $this->loBytes = $sum;
     } else if (is_object($value) && __CLASS__ == get_class($value)) {
-      $sum = (int) ($this->value + $value->_getValue());
+      $value = $value->_getValue();
+      $sum = (int) ($this->loBytes + $value[1]);
+      if (($this->loBytes > -1 && $sum < $this->loBytes && $sum > -1)
+        || ($this->loBytes < 0 && ($sum < $this->loBytes || $sum > -1))) {
+        if ($this->limit32Bit) {
+          throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+        }
+        $this->hiBytes = (int) ($this->hiBytes + 1);
+      }
+      $this->loBytes = $sum;
+      if ($this->limit32Bit && 0 !== $value[0]) {
+        throw new \OverflowException(self::EXCEPTION_32BIT_OVERFLOW);
+      }
+      $this->hiBytes = (int) ($this->hiBytes + $value[0]);
     } else {
       throw new \InvalidArgumentException(self::EXCEPTION_ADD_INVALID_ARGUMENT);
     }
-    if ($this->limit32Bit && INT_MAX_32 < $sum) {
-      throw new \OverFlowException(self::EXCEPTION_32BIT_OVERFLOW);
-    }
-    $this->value = $sum;
     return $this;
   }
 }

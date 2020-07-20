@@ -20,7 +20,7 @@
  * @copyright Copyright (C) 2013-2014 Nicolai Ehemann and contributors
  * @license GNU GPL
  */
-namespace ZipStreamer;
+namespace ZipStreamer\Lib;
 
 abstract class Count64Base {
   protected $limit32Bit = False;

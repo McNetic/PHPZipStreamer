@@ -6,9 +6,9 @@
 * See COPYING for details.
 */
 
-require_once __DIR__ . '/../../src/lib/Count64.php';
+use \ZipStreamer\Count64;
 
-class TestPack extends PHPUnit_Framework_TestCase
+class TestPack extends \PHPUnit\Framework\TestCase
 {
   public function providerPack16leValues() {
     # input value, description

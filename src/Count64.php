@@ -22,6 +22,9 @@
  */
 namespace ZipStreamer;
 
+use \ZipStreamer\Lib\Count64_32;
+use \ZipStreamer\Lib\Count64_64;
+
 const INT64_HIGH_MAP = 0xffffffff00000000;
 const INT64_LOW_MAP =  0x00000000ffffffff;
 const INT_MAX_32 = 0xffffffff;

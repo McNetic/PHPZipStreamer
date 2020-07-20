@@ -31,8 +31,6 @@
  */
 namespace ZipStreamer;
 
-require_once __DIR__ . "/lib/Count64.php";
-
 class COMPR {
   // compression method
   const STORE = 0x0000; //  0 - The file is stored (no compression)
