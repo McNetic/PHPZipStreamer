@@ -5,6 +5,13 @@
 * This file is licensed under the GNU GPL version 3 or later. 
 * See COPYING for details.
 */
+
+use Rivimey\ZipStreamer\Count64\Count64Base;
+use Rivimey\ZipStreamer\Count64\Count64;
+use Rivimey\ZipStreamer\Count64\Count64_32;
+use Rivimey\ZipStreamer\Count64\Count64_64;
+use Rivimey\ZipStreamer\Count64\PackBits;
+
 class TestPack extends PHPUnit_Framework_TestCase
 {
   public function providerPack16leValues() {
@@ -25,7 +32,7 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @dataProvider providerPack16leValues
   */
   public function testPack16le($value, $description) {
-    $this->assertEquals(ZipStreamer\pack16le($value), pack('v', $value), $description);
+    $this->assertEquals(PackBits::pack16le($value), pack('v', $value), $description);
   }
 
   public function providerPack32leValues() {
@@ -46,18 +53,18 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @dataProvider providerPack32leValues
   */
   public function testPack32le($value, $description) {
-    $this->assertEquals(ZipStreamer\pack32le($value), pack('V', $value), $description);
+    $this->assertEquals(PackBits::pack32le($value), pack('V', $value), $description);
   }
 
   public function providerPack64leValues() {
     # input value, expected high bytes, expected low bytes, description
     return array(
       array(0,                             0,          0,          "packing 0"),
-      array(ZipStreamer\Count64::construct(array(0xffffffff, 0x00000000)), 0xffffffff, 0x00000000, "packing pattern 0x00000000ffffffff"),
-      array(ZipStreamer\Count64::construct(array(0x00000000, 0xffffffff)), 0x00000000, 0xffffffff, "packing pattern 0xffffffff00000000"),
-      array(ZipStreamer\Count64::construct(array(0x0f0f0f0f, 0x0f0f0f0f)), 0x0f0f0f0f, 0x0f0f0f0f, "packing pattern 0x0f0f0f0f0f0f0f0f"),
-      array(ZipStreamer\Count64::construct(array(0xf0f0f0f0, 0xf0f0f0f0)), 0xf0f0f0f0, 0xf0f0f0f0, "packing pattern 0x00f0f0f0f0f0f0f0"),
-      array(ZipStreamer\Count64::construct(array(0xffffffff, 0xffffffff)), 0xffffffff, 0xffffffff, "packing maximum 64 bit value (0xffffffffffffffff)")
+      array(Count64::construct(array(0xffffffff, 0x00000000)), 0xffffffff, 0x00000000, "packing pattern 0x00000000ffffffff"),
+      array(Count64::construct(array(0x00000000, 0xffffffff)), 0x00000000, 0xffffffff, "packing pattern 0xffffffff00000000"),
+      array(Count64::construct(array(0x0f0f0f0f, 0x0f0f0f0f)), 0x0f0f0f0f, 0x0f0f0f0f, "packing pattern 0x0f0f0f0f0f0f0f0f"),
+      array(Count64::construct(array(0xf0f0f0f0, 0xf0f0f0f0)), 0xf0f0f0f0, 0xf0f0f0f0, "packing pattern 0x00f0f0f0f0f0f0f0"),
+      array(Count64::construct(array(0xffffffff, 0xffffffff)), 0xffffffff, 0xffffffff, "packing maximum 64 bit value (0xffffffffffffffff)")
     );
   }
 
@@ -65,7 +72,7 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @dataProvider providerPack64leValues
   */
   public function testPack64le($inVal, $cmpVal1, $cmpVal2, $description) {
-    $this->assertEquals(ZipStreamer\pack64le($inVal), pack('VV', $cmpVal1, $cmpVal2), $description);
+    $this->assertEquals(PackBits::pack64le($inVal), pack('VV', $cmpVal1, $cmpVal2), $description);
   }
 
   public function providerGoodCount64InitializationValues() {
@@ -78,7 +85,7 @@ class TestPack extends PHPUnit_Framework_TestCase
       array(0xffffffff, 0x00000000, array(0xffffffff, 0x00000000), "bit pattern array(0xffffffff, 0x00000000)"),
       array(0x0f0f0f0f, 0x0f0f0f0f, array(0x0f0f0f0f, 0x0f0f0f0f), "bit pattern array(0x0f0f0f0f, 0x0f0f0f0f)"),
       array(0xf0f0f0f0, 0xf0f0f0f0, array(0xf0f0f0f0, 0xf0f0f0f0), "bit pattern array(0xf0f0f0f0, 0xf0f0f0f0)"),
-      array(0x00000000, 0x00000000, ZipStreamer\Count64::construct(0), "Count64Base object (value 0)")
+      array(0x00000000, 0x00000000, Count64::construct(0), "Count64Base object (value 0)")
     );
   }
 
@@ -86,8 +93,8 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @dataProvider providerGoodCount64InitializationValues
   */
   public function testCount64Construct($loBytes, $hiBytes, $value, $description) {
-    $count64 = ZipStreamer\Count64::construct($value);
-    $this->assertInstanceOf('ZipStreamer\Count64Base', $count64, $description . ' (instanceof)');
+    $count64 = Count64::construct($value);
+    $this->assertTrue($count64 instanceof Count64Base, $description . ' (instanceof)');
     $this->assertEquals($loBytes, $count64->getLoBytes(), $description . " (loBytes)");
     $this->assertEquals($hiBytes, $count64->getHiBytes(), $description . " (hiBytes)");
   }
@@ -107,16 +114,16 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @expectedException InvalidArgumentException
   */
   public function testCount64ConstructFail($badValue) {
-    $count64 = ZipStreamer\Count64::construct($badValue);
+    $count64 = Count64::construct($badValue);
   }
 
   /**
   * @dataProvider providerGoodCount64InitializationValues
   */
   public function testCount64Set($loBytes, $hiBytes, $value, $description) {
-    $count64 = ZipStreamer\Count64::construct();
+    $count64 = Count64::construct();
     $count64->set($value);
-    $this->assertInstanceOf('ZipStreamer\Count64Base', $count64, $description . ' (instanceof)');
+    $this->assertTrue($count64 instanceof Count64Base);
     $this->assertEquals($loBytes, $count64->getLoBytes(), $description . " (loBytes)");
     $this->assertEquals($hiBytes, $count64->getHiBytes(), $description . " (hiBytes)");
   }
@@ -126,7 +133,7 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @expectedException InvalidArgumentException
   */
   public function testCount64SetFail($badValue) {
-    $count64 = ZipStreamer\Count64::construct();
+    $count64 = Count64::construct();
     $count64->set($badValue);
   }
 
@@ -149,10 +156,9 @@ class TestPack extends PHPUnit_Framework_TestCase
   * @dataProvider providerCount64AddValues
   */
   public function testCount64Add($value, $add, $loBytes, $hiBytes, $description) {
-    $count64 = ZipStreamer\Count64::construct($value);
+    $count64 = Count64::construct($value);
     $count64->add($add);
     $this->assertEquals($loBytes, $count64->getLoBytes(), $description . " (loBytes)".sprintf("%x=%x", $loBytes, $count64->getLoBytes()));
     $this->assertEquals($hiBytes, $count64->getHiBytes(), $description . " (hiBytes)");
   }
 }
-?>

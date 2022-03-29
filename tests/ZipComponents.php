@@ -6,9 +6,11 @@
  * This file is licensed under the GNU GPL version 3 or later.
  * See COPYING for details.
  */
-namespace ZipStreamer;
-
-require_once "src/ZipStreamer.php";
+namespace Rivimey\ZipStreamer\Tests;
+use Rivimey\ZipStreamer\Deflate\COMPR;
+use Rivimey\ZipStreamer\GPFLAGS;
+use Rivimey\ZipStreamer\Count64\Count64;
+use Rivimey\ZipStreamer\Count64\PackBits;
 
 /**
  * @codeCoverageIgnore
@@ -28,6 +30,26 @@ function hexIfFFFF($value) {
 
 function hexIfFFFFFFFF($value) {
   return $value == 0xffffffff ? '0x' . dechex($value) : $value;
+}
+
+class File {
+  const FILE = 1;
+  const DIR = 2;
+  public $filename;
+  public $date;
+  public $type;
+  public $data;
+
+  public function __construct($filename, $type, $date, $data = "") {
+    $this->filename = $filename;
+    $this->type = $type;
+    $this->date = $date;
+    $this->data = $data;
+  }
+
+  public function getSize() {
+    return strlen($this->data);
+  }
 }
 
 /**
@@ -52,9 +74,9 @@ abstract class zipRecord {
   public static function getMagicBytes() {
     if (!array_key_exists(static::$MAGIC, self::$magicBytes)) {
       if (2 == static::$magicLength) {
-        self::$magicBytes[static::$MAGIC] = pack16le(static::$MAGIC);
+        self::$magicBytes[static::$MAGIC] = PackBits::pack16le(static::$MAGIC);
       } else {
-        self::$magicBytes[static::$MAGIC] = pack32le(static::$MAGIC);
+        self::$magicBytes[static::$MAGIC] = PackBits::pack32le(static::$MAGIC);
       }
     }
     return self::$magicBytes[static::$MAGIC];
@@ -65,7 +87,7 @@ abstract class zipRecord {
     try {
       $eocdrec->readFromString($str, $pos, $size);
     } catch (Exception $e) {
-      $this->fail("error parsing end of central directory record");
+      self::fail("error parsing end of central directory record");
     }
 
     return $eocdrec;
@@ -137,13 +159,13 @@ class EndOfCentralDirectoryRecord extends zipRecord {
     if (self::getMagicBytes() != $magic) {
       throw new ParseException("invalid magic");
     }
-    $this->numberDisk = (int) unpack16le(readstr($str, $pos, 2));
-    $this->numberDiskStartCD = (int) unpack16le(readstr($str, $pos, 2));
-    $this->numberEntriesDisk = (int) unpack16le(readstr($str, $pos, 2));
-    $this->numberEntriesCD = (int) unpack16le(readstr($str, $pos, 2));
-    $this->size = (int) unpack32le(readstr($str, $pos, 4));
-    $this->offsetStart = (int) unpack32le(readstr($str, $pos, 4));
-    $this->lengthComment = unpack16le(readstr($str, $pos, 2));
+    $this->numberDisk = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->numberDiskStartCD = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->numberEntriesDisk = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->numberEntriesCD = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->size = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->offsetStart = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->lengthComment = PackBits::unpack16le(readstr($str, $pos, 2));
     if (0 < $this->lengthComment) {
       $this->comment = (string) readstr($str, $pos, $this->lengthComment);
     } else {
@@ -195,9 +217,9 @@ class Zip64EndOfCentralDirectoryLocator extends zipRecord {
     if (static::getMagicBytes() != $magic) {
       throw new ParseException("invalid magic");
     }
-    $this->numberDiskStartZ64EOCDL = (int) unpack32le(readstr($str, $pos, 4));
-    $this->offsetStart = unpack64le(readstr($str, $pos, 8));
-    $this->numberDisks = (int) unpack32le(readstr($str, $pos, 4));
+    $this->numberDiskStartZ64EOCDL = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->offsetStart = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->numberDisks = (int) PackBits::unpack32le(readstr($str, $pos, 4));
     $this->end = $pos - 1;
   }
 }
@@ -262,15 +284,15 @@ class Zip64EndOfCentralDirectoryRecord extends zipRecord {
     if (static::getMagicBytes() != $magic) {
       throw new ParseException("invalid magic");
     }
-    $this->size = unpack64le(readstr($str, $pos, 8));
+    $this->size = PackBits::unpack64le(readstr($str, $pos, 8));
     $this->madeByVersion = readstr($str, $pos, 2);
     $this->versionToExtract = readstr($str, $pos, 2);
-    $this->numberDisk = (int) unpack32le(readstr($str, $pos, 4));
-    $this->numberDiskStartCDR = (int) unpack32le(readstr($str, $pos, 4));
-    $this->numberEntriesDisk = unpack64le(readstr($str, $pos, 8));
-    $this->numberEntriesCD = unpack64le(readstr($str, $pos, 8));
-    $this->sizeCD = unpack64le(readstr($str, $pos, 8));
-    $this->offsetStart = unpack64le(readstr($str, $pos, 8));
+    $this->numberDisk = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->numberDiskStartCDR = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->numberEntriesDisk = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->numberEntriesCD = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->sizeCD = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->offsetStart = PackBits::unpack64le(readstr($str, $pos, 8));
     $this->end = $pos - 1;
   }
 }
@@ -359,16 +381,16 @@ class CentralDirectoryHeader extends zipRecord {
     $this->gpFlags = readstr($str, $pos, 2);
     $this->gzMethod = readstr($str, $pos, 2);
     $this->dosTime = readstr($str, $pos, 4);
-    $this->dataCRC32 = (int) unpack32le(readstr($str, $pos, 4));
-    $this->sizeCompressed = (int) unpack32le(readstr($str, $pos, 4));
-    $this->size = (int) unpack32le(readstr($str, $pos, 4));
-    $this->lengthFilename = (int) unpack16le(readstr($str, $pos, 2));
-    $this->lengthExtraField = (int) unpack16le(readstr($str, $pos, 2));
-    $this->lengthComment = (int) unpack16le(readstr($str, $pos, 2));
-    $this->diskNumberStart = (int) unpack16le(readstr($str, $pos, 2));
+    $this->dataCRC32 = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->sizeCompressed = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->size = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->lengthFilename = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->lengthExtraField = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->lengthComment = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->diskNumberStart = (int) PackBits::unpack16le(readstr($str, $pos, 2));
     $this->fileAttrInternal = readstr($str, $pos, 2);
     $this->fileAttrExternal = readstr($str, $pos, 4);
-    $this->offsetStart = (int) unpack32le(readstr($str, $pos, 4));
+    $this->offsetStart = (int) PackBits::unpack32le(readstr($str, $pos, 4));
     if (0 < $this->lengthFilename) {
       $this->filename = (string) readstr($str, $pos, $this->lengthFilename);
     } else {
@@ -433,11 +455,11 @@ class Zip64ExtendedInformationField extends zipRecord {
     if (static::getMagicBytes() != $magic) {
       throw new ParseException("invalid magic");
     }
-    $this->sizeField = (int) unpack16le(readstr($str, $pos, 2));
-    $this->size = unpack64le(readstr($str, $pos, 8));
-    $this->sizeCompressed = unpack64le(readstr($str, $pos, 8));
-    $this->offsetStart = unpack64le(readstr($str, $pos, 8));
-    $this->diskNumberStart = (int) unpack16le(readstr($str, $pos, 4));
+    $this->sizeField = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->size = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->sizeCompressed = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->offsetStart = PackBits::unpack64le(readstr($str, $pos, 8));
+    $this->diskNumberStart = (int) PackBits::unpack16le(readstr($str, $pos, 4));
 
     $this->end = $pos - 1;
   }
@@ -513,9 +535,9 @@ class LocalFileHeader extends zipRecord {
         "Filename length:                          %d\n" .
         "Extra field length:                       %d\n" .
         "Filename:                                 %s\n" ,
-        bin2hex($this->versionToExtract),
-        bin2hex($this->gpFlags),
-        bin2hex($this->gzMethod),
+        PackBits::bin2hex($this->versionToExtract),
+        PackBits::bin2hex($this->gpFlags),
+        PackBits::bin2hex($this->gzMethod),
         $this->dosTime,
         $this->dataCRC32,
         hexIfFFFFFFFF($this->sizeCompressed),
@@ -542,14 +564,14 @@ class LocalFileHeader extends zipRecord {
       throw new ParseException("invalid magic");
     }
     $this->versionToExtract = readstr($str, $pos, 2);
-    $this->gpFlags = (int) unpack16le(readstr($str, $pos, 2));
-    $this->gzMethod = (int) unpack16le(readstr($str, $pos, 2));
+    $this->gpFlags = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->gzMethod = (int) PackBits::unpack16le(readstr($str, $pos, 2));
     $this->dosTime = readstr($str, $pos, 4);
-    $this->dataCRC32 = (int) unpack32le(readstr($str, $pos, 4));
-    $this->sizeCompressed = (int) unpack32le(readstr($str, $pos, 4));
-    $this->size = (int) unpack32le(readstr($str, $pos, 4));
-    $this->lengthFilename = (int) unpack16le(readstr($str, $pos, 2));
-    $this->lengthExtraField = (int) unpack16le(readstr($str, $pos, 2));
+    $this->dataCRC32 = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->sizeCompressed = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->size = (int) PackBits::unpack32le(readstr($str, $pos, 4));
+    $this->lengthFilename = (int) PackBits::unpack16le(readstr($str, $pos, 2));
+    $this->lengthExtraField = (int) PackBits::unpack16le(readstr($str, $pos, 2));
     if (0 < $this->lengthFilename) {
       $this->filename = (string) readstr($str, $pos, $this->lengthFilename);
     } else {
@@ -591,15 +613,14 @@ class DataDescriptor extends zipRecord {
 
   public function readFromString($str, $pos, $size = -1) {
     $this->begin = $pos;
-    $this->dataCRC32 = (int) unpack32le(readstr($str, $pos, 4));
+    $this->dataCRC32 = (int) PackBits::unpack32le(readstr($str, $pos, 4));
     if (20 == $size) {
-      $this->sizeCompressed = unpack64le(readstr($str, $pos, 8));
-      $this->size = unpack64le(readstr($str, $pos, 8));
+      $this->sizeCompressed = PackBits::unpack64le(readstr($str, $pos, 8));
+      $this->size = PackBits::unpack64le(readstr($str, $pos, 8));
     } else {
-      $this->sizeCompressed = Count64::construct((int) unpack32le(readstr($str, $pos, 4)));
-      $this->size = Count64::construct((int) unpack32le(readstr($str, $pos, 4)));
+      $this->sizeCompressed = Count64::construct((int) PackBits::unpack32le(readstr($str, $pos, 4)));
+      $this->size = Count64::construct((int) PackBits::unpack32le(readstr($str, $pos, 4)));
           }
     $this->end = $pos - 1;
   }
 }
-?>

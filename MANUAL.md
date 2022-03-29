@@ -39,6 +39,39 @@ $zip->finalize();
 
 ```
 
+Add a single file (here, html text) in immediate mode:
+```php
+require("src/ZipStreamer.php");
+
+# initialize ZipStreamer object (ZipStreamer has it's own namespace)
+$zip = new ZipStreamer\ZipStreamer();
+
+$data = "<html><head><title>Hello World</title></head><body><h1>Hello World</h1></body></html>";
+$zip->addFileFromString($data, 'test1.htm');
+
+# finalize zip file. Nothing can be added any more. 
+$zip->finalize();
+
+```
+
+Add a single file (here, html text) using the chunk interface, to enable
+in-flight file streaming:
+```php
+require("src/ZipStreamer.php");
+
+# initialize ZipStreamer object (ZipStreamer has it's own namespace)
+$zip = new ZipStreamer\ZipStreamer();
+
+$zip->addFileOpen('test1.htm');
+$data = "<html><head><title>Hello World</title></head><body><h1>Hello World</h1></body></html>";
+$zip->addFileWrite($data);
+$zip->addFileClose();
+
+# finalize zip file. Nothing can be added any more. 
+$zip->finalize();
+
+```
+
 Characteristics
 ---------------
 
@@ -64,6 +97,10 @@ deflate (the zip standard) compression can be enabled and/or disabled globally
 and per file. Without pecl_http extension, it is still possible to enable
 deflate compression, but with compression level 0, so there is no actual 
 compression.
+Note: The pecl_http extension is also available in some OS repos as 'php-http'.
+* addFileFromString sets the data length and CRC in the file header while
+addFileFromStream and addFileOpen/addFileWrite/addFileClose both create a
+blank file header and fill in the length afterwards, as allowed by the zip spec.
 
 API Documentation
 -----------------
@@ -126,6 +163,68 @@ Add a file to the archive at the specified location and file name.
 bool Success
 
 ```
+addFileFromString(string $data, string $filePath, array $options) : bool
+```
+
+Add a file to the archive at the specified location and file name.
+
+######Parameters
+* string *$data* The file contents to store.
+* string *$filePath* Filepath and name to be used in the archive.
+* array *options* (optional) additional options. Valid options are:
+    * int *$timestamp* Timestamp for the file (default: current time)
+    * string *$comment* comment to be added for this file (default: none)
+    * int *compress*: compression method (override global option for this
+    file)
+    * int *level*: compression level (override global option for this file)
+
+######Returns
+bool Success
+
+```
+addFileOpen(string $filePath, array $options) : bool
+```
+
+Start the process of adding a file chunk by chunk.
+
+This call must be followed by 0 or more calls to addFileWrite(), and then one 
+call to addFileClose(). There is no support for multiple simultaneously active
+files.
+
+######Parameters
+* string *$filePath* Filepath and name to be used in the archive.
+* array *options* (optional) additional options. Valid options are:
+    * int *$timestamp* Timestamp for the file (default: current time)
+    * string *$comment* comment to be added for this file (default: none)
+    * int *compress*: compression method (override global option for this
+    file)
+    * int *level*: compression level (override global option for this file)
+
+######Returns
+bool Success
+
+```
+addFileWrite(string $data) : bool
+```
+
+Append more data to a file being written by addFileOpen().
+
+######Parameters
+* string *$data* The file contents to store.
+
+######Returns
+bool Success
+
+```
+addFileClose() : bool
+```
+
+Close a file being written by addFileOpen() and append relevant metadata.
+
+######Returns
+bool Success
+
+```
 addEmptyDir(string $directoryPath, array $options) : bool
 ```
 
@@ -150,4 +249,3 @@ A closed archive can no longer have new files added to it. After closing, the zi
 
 ######Returns
 bool Success
-
