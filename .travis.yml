@@ -17,10 +17,10 @@ before_install:
   - sh -c "mkdir -p ${TRAVIS_BUILD_DIR}/travis/module-cache/`php-config --vernum`"
 
 before_script:
- - ./test/travis/php-modules-install.sh
+ - ./tests/travis/php-modules-install.sh
 
 script:
- - phpunit --configuration test/phpunit.xml
+ - phpunit --configuration phpunit.xml
 
 cache:
   directories:
